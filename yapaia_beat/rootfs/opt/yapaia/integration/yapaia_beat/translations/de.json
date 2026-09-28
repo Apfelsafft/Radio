@@ -1,0 +1,149 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Yapaia Beat",
+        "description": "Verbindung zum Yapaia Beat Add-on. Hostname siehe Add-on-Info (z. B. local-yapaia-beat).",
+        "data": {
+          "host": "Host",
+          "port": "Port"
+        }
+      },
+      "hassio_confirm": {
+        "title": "Yapaia Beat",
+        "description": "Das Yapaia Beat Add-on wurde gefunden. Jetzt einrichten?"
+      }
+    },
+    "error": {
+      "cannot_connect": "Keine Verbindung zum Add-on möglich."
+    },
+    "abort": {
+      "already_configured": "Yapaia Beat ist bereits eingerichtet.",
+      "cannot_connect": "Keine Verbindung zum Add-on möglich."
+    }
+  },
+  "entity": {
+    "media_player": {
+      "radio": {
+        "name": "Radio"
+      }
+    },
+    "select": {
+      "favorite": {
+        "name": "Favorit"
+      }
+    },
+    "sensor": {
+      "station": {
+        "name": "Sender"
+      },
+      "radiotext": {
+        "name": "Radiotext"
+      },
+      "now_playing": {
+        "name": "Aktueller Titel"
+      },
+      "signal": {
+        "name": "Empfangsqualität"
+      },
+      "frequency": {
+        "name": "Frequenz / Kanal"
+      },
+      "program_type": {
+        "name": "Programmtyp"
+      },
+      "scan": {
+        "name": "Suchlauf"
+      },
+      "follow": {
+        "name": "Senderverfolgung Status"
+      }
+    },
+    "switch": {
+      "auto_follow": {
+        "name": "Senderverfolgung"
+      },
+      "mute": {
+        "name": "Stumm"
+      }
+    },
+    "button": {
+      "scan_fm": {
+        "name": "FM-Suchlauf"
+      },
+      "scan_dab": {
+        "name": "DAB+-Suchlauf"
+      },
+      "scan_all": {
+        "name": "Suchlauf FM + DAB+"
+      },
+      "next": {
+        "name": "Nächster Favorit"
+      },
+      "previous": {
+        "name": "Vorheriger Favorit"
+      },
+      "seek_up": {
+        "name": "FM Frequenz +"
+      },
+      "seek_down": {
+        "name": "FM Frequenz −"
+      },
+      "favorite_current": {
+        "name": "Aktuellen Sender als Favorit"
+      }
+    },
+    "image": {
+      "logo": {
+        "name": "Senderlogo"
+      },
+      "slideshow": {
+        "name": "DAB+ Slideshow"
+      }
+    }
+  },
+  "services": {
+    "play": {
+      "name": "Sender abspielen",
+      "description": "Spielt einen Sender (Name oder ID) oder eine UKW-Frequenz.",
+      "fields": {
+        "station": {
+          "name": "Sendername",
+          "description": "Name des Senders, z. B. SWR3."
+        },
+        "station_id": {
+          "name": "Sender-ID",
+          "description": "Interne Sender-ID (Attribut station_id)."
+        },
+        "frequency": {
+          "name": "Frequenz",
+          "description": "UKW-Frequenz in MHz."
+        }
+      }
+    },
+    "scan": {
+      "name": "Suchlauf starten",
+      "description": "Startet einen Sendersuchlauf.",
+      "fields": {
+        "band": {
+          "name": "Band",
+          "description": "fm, dab oder all."
+        }
+      }
+    },
+    "set_favorite": {
+      "name": "Favorit setzen",
+      "description": "Markiert einen Sender (Standard: aktueller Sender) als Favorit.",
+      "fields": {
+        "station_id": {
+          "name": "Sender-ID",
+          "description": "Leer = aktueller Sender."
+        },
+        "favorite": {
+          "name": "Favorit",
+          "description": "Hinzufügen oder entfernen."
+        }
+      }
+    }
+  }
+}

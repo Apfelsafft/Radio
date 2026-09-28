@@ -1,0 +1,57 @@
+configuration:
+  audio_output:
+    name: Audio output
+    description: >-
+      "local" plays through the Home Assistant audio output (speakers on the
+      host) and also provides the MP3 stream. "stream" provides the MP3 stream only.
+  default_volume:
+    name: Initial volume
+    description: Volume on first start (0–100). Afterwards the last volume is remembered.
+  rtl_gain:
+    name: Tuner gain
+    description: '"auto" or a value in dB (e.g. 29.7). Reduce if strong transmitters overload the stick.'
+  ppm_correction:
+    name: Frequency correction (ppm)
+  auto_follow:
+    name: Automatic station following
+    description: >-
+      When reception degrades, Yapaia Beat looks for a better frequency (RDS AF
+      list, PI code) or another DAB channel of the same station.
+  follow_threshold:
+    name: Station following threshold (%)
+  follow_delay_s:
+    name: Station following delay (s)
+  follow_cross_band:
+    name: Allow switching between FM and DAB+
+  follow_full_search:
+    name: Band search while following
+    description: As a last resort, search the whole band for the station (PI code / service ID).
+  logo_lookup_online:
+    name: Look up station logos online
+    description: Search logos on radio-browser.info and cache them locally.
+  country_code:
+    name: Country code
+    description: Two letter country code used for the logo search (e.g. DE, AT, CH).
+  fm_step_khz:
+    name: FM channel step (kHz)
+  fm_scan_threshold_db:
+    name: FM scan sensitivity (dB)
+  fm_deemphasis_us:
+    name: FM de-emphasis (µs)
+    description: 50 µs in Europe, 75 µs in North America.
+  dab_prefilter:
+    name: Fast DAB scan
+    description: Measure the band first and only probe occupied channels.
+  mp3_bitrate:
+    name: MP3 stream bitrate (kbit/s)
+  rtl_device_index:
+    name: RTL-SDR device index
+  resume_last_station:
+    name: Resume last station
+  install_integration:
+    name: Install integration automatically
+    description: Installs/updates the Yapaia Beat integration (entities and Lovelace card) in /config/custom_components.
+  log_level:
+    name: Log level
+network:
+  8099/tcp: Web UI & MP3 stream (optional, for external players)

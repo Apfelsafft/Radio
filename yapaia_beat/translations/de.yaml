@@ -1,0 +1,67 @@
+configuration:
+  audio_output:
+    name: Audioausgabe
+    description: >-
+      "local" spielt über die Audioausgabe von Home Assistant (Lautsprecher am
+      Host) und stellt zusätzlich den MP3-Stream bereit. "stream" nur MP3-Stream.
+  default_volume:
+    name: Start-Lautstärke
+    description: Lautstärke beim ersten Start (0–100). Danach wird die zuletzt gewählte gespeichert.
+  rtl_gain:
+    name: Tuner-Verstärkung
+    description: '"auto" oder ein Wert in dB (z. B. 29.7). Bei Übersteuerung in Sendernähe reduzieren.'
+  ppm_correction:
+    name: Frequenzkorrektur (ppm)
+    description: Quarz-Korrektur des RTL-SDR Sticks.
+  auto_follow:
+    name: Automatische Senderverfolgung
+    description: >-
+      Wird der Empfang schlechter, sucht Yapaia Beat automatisch eine bessere
+      Frequenz (RDS-AF-Liste, PI-Code) bzw. einen anderen DAB-Kanal desselben
+      Senders. Kann auch im Dashboard umgeschaltet werden.
+  follow_threshold:
+    name: Schwelle Senderverfolgung (%)
+    description: Unterhalb dieser Empfangsqualität wird nach einer Alternative gesucht.
+  follow_delay_s:
+    name: Verzögerung Senderverfolgung (s)
+    description: So lange muss der Empfang schlecht sein, bevor gesucht wird.
+  follow_cross_band:
+    name: Wechsel zwischen FM und DAB+ erlauben
+    description: Findet sich keine bessere Frequenz im selben Band, wird derselbe Sender im anderen Band gesucht.
+  follow_full_search:
+    name: Bandsuche bei Senderverfolgung
+    description: Als letzte Möglichkeit das ganze Band nach dem Sender (PI-Code/Service-ID) durchsuchen.
+  logo_lookup_online:
+    name: Senderlogos online suchen
+    description: Logos über radio-browser.info suchen und lokal zwischenspeichern.
+  country_code:
+    name: Ländercode
+    description: Zweistelliger Ländercode für die Logosuche (z. B. DE, AT, CH).
+  fm_step_khz:
+    name: FM-Kanalraster (kHz)
+  fm_scan_threshold_db:
+    name: FM-Suchlauf Empfindlichkeit (dB)
+    description: Mindestabstand eines Senders zum Rauschen. Kleiner = mehr (auch schwache) Sender.
+  fm_deemphasis_us:
+    name: FM De-Emphasis (µs)
+    description: 50 µs in Europa, 75 µs in Nordamerika.
+  dab_prefilter:
+    name: DAB-Schnellsuchlauf
+    description: Vor dem DAB-Suchlauf das Band messen und nur belegte Kanäle prüfen.
+  mp3_bitrate:
+    name: MP3-Stream Bitrate (kbit/s)
+  rtl_device_index:
+    name: RTL-SDR Geräteindex
+    description: Nur bei mehreren Sticks relevant.
+  resume_last_station:
+    name: Letzten Sender fortsetzen
+    description: Nach einem Neustart den zuletzt gespielten Sender wieder abspielen.
+  install_integration:
+    name: Integration automatisch installieren
+    description: >-
+      Installiert/aktualisiert die Yapaia Beat Integration (Entitäten und
+      Lovelace-Karte) in /config/custom_components.
+  log_level:
+    name: Log-Level
+network:
+  8099/tcp: Web-Oberfläche & MP3-Stream (optional, für externe Player)

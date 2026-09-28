@@ -1,0 +1,74 @@
+name: Yapaia Beat
+version: "1.0.0"
+slug: yapaia_beat
+description: >-
+  FM- und DAB+-Radio mit einem RTL-SDR Stick: Sendersuchlauf, Favoriten,
+  Senderlogos, RDS/DLS-Infos und automatische Senderverfolgung.
+url: https://github.com/apfelsafft/radio
+arch:
+  - aarch64
+  - amd64
+  - armv7
+init: false
+startup: application
+boot: auto
+ingress: true
+ingress_port: 8099
+panel_icon: mdi:radio
+panel_title: Yapaia Beat
+usb: true
+udev: true
+audio: true
+homeassistant_api: true
+hassio_api: true
+discovery:
+  - yapaia_beat
+map:
+  - type: homeassistant_config
+    read_only: false
+ports:
+  8099/tcp: null
+ports_description:
+  8099/tcp: "Optional: Web-Oberfläche & MP3-Stream (/stream.mp3) im lokalen Netz"
+options:
+  audio_output: local
+  default_volume: 60
+  rtl_gain: auto
+  ppm_correction: 0
+  auto_follow: true
+  follow_threshold: 35
+  follow_delay_s: 8
+  follow_cross_band: true
+  follow_full_search: true
+  logo_lookup_online: true
+  country_code: DE
+  fm_step_khz: "100"
+  fm_scan_threshold_db: 8
+  fm_deemphasis_us: "50"
+  dab_prefilter: true
+  mp3_bitrate: "128"
+  rtl_device_index: 0
+  resume_last_station: true
+  install_integration: true
+  log_level: info
+schema:
+  audio_output: list(local|stream)
+  default_volume: int(0,100)
+  rtl_gain: match(^(auto|[0-9]{1,2}([.,][0-9])?)$)
+  ppm_correction: int(-200,200)
+  auto_follow: bool
+  follow_threshold: int(5,90)
+  follow_delay_s: int(3,120)
+  follow_cross_band: bool
+  follow_full_search: bool
+  logo_lookup_online: bool
+  country_code: match(^([A-Za-z]{2})?$)
+  fm_step_khz: list(50|100)
+  fm_scan_threshold_db: float(3,30)
+  fm_deemphasis_us: list(50|75)
+  dab_prefilter: bool
+  mp3_bitrate: list(64|96|128|160|192|256|320)
+  rtl_device_index: int(0,9)
+  resume_last_station: bool
+  install_integration: bool
+  log_level: list(debug|info|warning|error)
