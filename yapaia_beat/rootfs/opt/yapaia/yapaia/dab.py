@@ -333,7 +333,7 @@ async def dab_candidates(opts: Options) -> list[str]:
     if not opts.dab_prefilter:
         return list(DAB_CHANNELS)
     try:
-        spectrum = await rtl_power_sweep(opts, 174.0, 240.2, 100, seconds=2)
+        spectrum = await rtl_power_sweep(opts, 174.0, 240.2, 200, seconds=1)
     except RuntimeError as err:
         if "Stick" in str(err):
             raise

@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import asyncio
 import collections
+import contextlib
 import json
 import logging
+import signal
 import time
 from collections.abc import Awaitable, Callable
 from typing import Any
@@ -13,6 +15,7 @@ from typing import Any
 from .config import Options
 from .dsp import MPX_RATE, FmStereoDecoder
 from .procs import gain_args, kill
+from .usb import reset_sticks
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -251,6 +254,8 @@ class FmTuner:
             return "Kein RTL-SDR Stick gefunden"
         if "usb_claim_interface" in text or "Failed to open" in text:
             return "RTL-SDR Stick belegt oder nicht zugreifbar"
+        if "cb transfer status" in text or "LIBUSB_ERROR" in text:
+            return "Verbindung zum RTL-SDR Stick verloren"
         return None
 
     # ------------------------------------------------------------------
@@ -298,7 +303,11 @@ async def probe_fm(opts: Options, freq: float, max_time: float = 5.0, min_time: 
 
 
 async def rtl_power_sweep(opts: Options, start_mhz: float, stop_mhz: float, bin_khz: int, seconds: int = 2) -> dict[float, float]:
-    """Run a single ``rtl_power`` sweep and return {MHz: dB}."""
+    """Run a single ``rtl_power`` sweep and return {MHz: dB}.
+
+    rtl_power occasionally hangs (and can take the stick with it), so it gets
+    a hard deadline; whatever was measured until then is still used.
+    """
     cmd = [
         "rtl_power",
         "-d", str(opts.rtl_device_index),
@@ -312,18 +321,44 @@ async def rtl_power_sweep(opts: Options, start_mhz: float, stop_mhz: float, bin_
     ]  # fmt: skip
     _LOGGER.debug("Starting %s", " ".join(cmd))
     proc = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+    lines: list[str] = []
+    err_lines: list[str] = []
+
+    async def read(stream: asyncio.StreamReader, into: list[str]) -> None:
+        while line := await stream.readline():
+            into.append(line.decode(errors="replace"))
+
+    assert proc.stdout and proc.stderr
+    readers = asyncio.gather(read(proc.stdout, lines), read(proc.stderr, err_lines), proc.wait())
+    deadline = 25 + seconds * 10
+    hung = False
     try:
-        out, err = await asyncio.wait_for(proc.communicate(), 60 + seconds * 20)
+        await asyncio.wait_for(asyncio.shield(readers), deadline)
     except asyncio.TimeoutError:
-        await kill(proc)
-        raise RuntimeError("rtl_power timeout") from None
-    if proc.returncode != 0 and not out:
-        text = err.decode(errors="replace")
+        hung = True
+        _LOGGER.warning("rtl_power did not finish within %ss – stopping it", deadline)
+        with contextlib.suppress(ProcessLookupError):
+            proc.send_signal(signal.SIGINT)  # graceful: lets it release the stick
+        try:
+            await asyncio.wait_for(asyncio.shield(readers), 5)
+        except asyncio.TimeoutError:
+            await kill(proc)
+            readers.cancel()
+            reset_sticks()
+    text = "".join(err_lines)
+    spectrum = _parse_rtl_power("".join(lines))
+    if not spectrum:
         if "No supported devices" in text:
             raise RuntimeError("Kein RTL-SDR Stick gefunden")
-        raise RuntimeError(f"rtl_power fehlgeschlagen: {text.strip()[-200:]}")
+        if "usb_claim_interface" in text or "Failed to open" in text:
+            raise RuntimeError("RTL-SDR Stick belegt oder nicht zugreifbar")
+        raise RuntimeError("rtl_power timeout" if hung else f"rtl_power fehlgeschlagen: {text.strip()[-200:]}")
+    return spectrum
+
+
+def _parse_rtl_power(out: str) -> dict[float, float]:
     spectrum: dict[float, float] = {}
-    for line in out.decode(errors="replace").splitlines():
+    for line in out.splitlines():
         parts = [p.strip() for p in line.split(",")]
         if len(parts) < 7:
             continue

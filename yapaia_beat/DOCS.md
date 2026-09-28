@@ -276,7 +276,11 @@ Favoriten bleiben erhalten und werden automatisch zugeordnet.
 
 ## Fehlersuche
 
-- **„Kein RTL-SDR Stick gefunden"**: Stick neu einstecken, Add-on neu starten.
+- **„Kein RTL-SDR Stick gefunden"**: Yapaia Beat versucht alle 15 s, den
+  Stick wieder anzusprechen, und spielt danach den letzten Sender weiter. Hilft
+  das nicht, Stick kurz abziehen und wieder einstecken. Tritt es häufig auf:
+  USB-Verlängerung/aktiven Hub verwenden (manche Sticks brauchen viel Strom
+  und werden sehr warm).
   Unter *Einstellungen → System → Hardware* muss ein Gerät „RTL2838" o. ä.
   auftauchen. Läuft ein anderes Add-on mit dem Stick (z. B. rtl_433), dieses
   stoppen – ein Stick kann nur von einem Programm genutzt werden.

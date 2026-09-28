@@ -16,8 +16,10 @@ from .dab import DabTuner, dab_candidates, norm_sid, probe_dab, scan_dab, split_
 from .fm import FM_START, FM_STOP, FmTuner, fm_candidates, probe_fm, rtl_power_sweep, scan_fm
 from .logos import LogoManager
 from .store import Store, display_name, fm_station_id, normalize_name
+from .usb import reset_sticks
 
 _LOGGER = logging.getLogger(__name__)
+RECOVER_INTERVAL = 15  # seconds between attempts to get a lost stick back
 
 Tuner = FmTuner | DabTuner
 
@@ -51,6 +53,9 @@ class Radio:
         self._follow_block_until = 0.0
         self._last_json = ""
         self._slide: tuple[int, bytes, str] | None = None
+        self._recover_at = 0.0
+        self._recover_error: str | None = None
+        self._recover_tries = 0
 
     # ------------------------------------------------------------------ lifecycle
     async def start(self) -> None:
@@ -165,6 +170,7 @@ class Radio:
         self.changed()
 
     async def stop(self) -> None:
+        self._recover_error = None
         if self.scan["running"]:
             self.cancel_scan()
             return
@@ -348,16 +354,51 @@ class Radio:
 
     async def _tick(self) -> None:
         tuner = self.tuner
-        if tuner and self.state == "playing" and not tuner.running and tuner.error:
+        if tuner and self.state == "playing" and not tuner.running:
+            if not tuner.error:  # died silently, e.g. stick unplugged
+                tuner.error = "Empfänger unerwartet beendet – RTL-SDR Stick prüfen"
             _LOGGER.error("Receiver stopped: %s", tuner.error)
             self.error = tuner.error
             self.state = "error"
             await self._stop_tuner()
+            if "Stick" in tuner.error:
+                self._recover_error = tuner.error
+                self._recover_at = time.monotonic() + RECOVER_INTERVAL
+        elif tuner and tuner.running and time.monotonic() - tuner.started > 60:
+            self._recover_tries = 0  # healthy again
+        if self.state == "error" and self.station and self._recover_error:
+            await self._recover()
         if isinstance(tuner, FmTuner) and self.station and self.station.get("transient"):
             self._enrich_transient(tuner)
         if not self._lock.locked():
             await self._check_follow()
         self.changed()
+
+    async def _recover(self) -> None:
+        """The stick vanished or hung (USB hiccup, loose cable in the camper):
+        keep retrying the last station until it is back."""
+        now = time.monotonic()
+        wait = max(0, int(self._recover_at - now))
+        base = self._recover_error or ""
+        self.error = f"{base} · neuer Versuch in {wait} s"
+        if now < self._recover_at or self._lock.locked() or self.scan["running"]:
+            return
+        self._recover_tries += 1
+        self._recover_at = now + RECOVER_INTERVAL
+        if self._recover_tries % 4 == 2 and "belegt" in base:
+            await asyncio.to_thread(reset_sticks)  # enumerated but not answering
+        st = self.station
+        _LOGGER.info("Trying to recover the receiver (attempt %d)", self._recover_tries)
+        try:
+            if st.get("transient"):
+                await self.tune_fm(st["freq"])
+            else:
+                await self.play(st["id"])
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.debug("Recovery attempt failed: %s", err)
+        if self.state == "playing":
+            self.error = None  # the monitor sets it again if the tuner dies
+            self._recover_error = None
 
     def _enrich_transient(self, tuner: FmTuner) -> None:
         pi = tuner.rds.pi
