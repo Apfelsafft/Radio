@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.1.1
+
+- Automatische Wiederherstellung, wenn der RTL-SDR Stick verschwindet oder
+  hängt (lockerer USB-Stecker, Wackelkontakt im Camper): alle 15 s ein neuer
+  Versuch, danach läuft der letzte Sender automatisch weiter
+- `rtl_power` (Bandmessung für Suchlauf/Senderverfolgung) hat ein festes
+  Zeitlimit, wird sauber beendet und blockiert den Stick nicht mehr; bereits
+  gemessene Werte werden weiterverwendet
+- USB-Reset des Sticks, wenn ein Hilfsprogramm hängen bleibt
+- Unerwartet beendeter Empfang wird erkannt (vorher blieb der Status auf „läuft")
+- DAB-Vorauswahl misst schneller
+
 ## 1.1.0
 
 - Radio im Browser hören: Ausgabe wählbar „Mini-PC", „Dieses Gerät" oder „Beide"

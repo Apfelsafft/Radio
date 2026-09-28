@@ -42,3 +42,11 @@ def test_fm_candidates_finds_peaks_only():
                 spectrum[k] = -20.0 if abs(k - station) < 0.06 else -30.0
     found = [f for f, _ in fm_candidates(spectrum, 100, 8)]
     assert found == [94.3, 101.3]
+
+
+def test_parse_rtl_power_partial_output():
+    from yapaia.fm import _parse_rtl_power
+
+    out = "2026-09-28, 01:00:00, 174000000, 176000000, 200000.00, 100, -40.0, -30.5, nan\n" "garbage line\n"
+    spec = _parse_rtl_power(out)
+    assert spec == {174.0: -40.0, 174.2: -30.5}
