@@ -65,6 +65,9 @@
       },
       "mute": {
         "name": "Mute"
+      },
+      "local_output": {
+        "name": "Host speakers"
       }
     },
     "button": {

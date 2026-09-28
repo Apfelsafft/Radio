@@ -65,6 +65,9 @@
       },
       "mute": {
         "name": "Stumm"
+      },
+      "local_output": {
+        "name": "Lautsprecher Mini-PC"
       }
     },
     "button": {

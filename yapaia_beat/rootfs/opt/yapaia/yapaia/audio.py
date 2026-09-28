@@ -10,6 +10,7 @@ import asyncio
 import logging
 import os
 import shutil
+import time
 
 import numpy as np
 
@@ -23,7 +24,10 @@ CHANNELS = 2
 
 class AudioOutput:
     def __init__(self, local: bool, bitrate: int, volume: int) -> None:
+        # "local" = playback on the Home Assistant host is possible at all,
+        # "local_enabled" = the user wants sound from the host speakers
         self.local = local and bool(os.environ.get("PULSE_SERVER") or shutil.which("pacat"))
+        self.local_enabled = True
         self.bitrate = bitrate
         self.volume = max(0, min(100, volume))
         self.muted = False
@@ -32,10 +36,12 @@ class AudioOutput:
         self._lame_reader: asyncio.Task | None = None
         self._clients: set[asyncio.Queue[bytes]] = set()
         self.level = 0.0
+        self._last_write = 0.0
+        self._keepalive: asyncio.Task | None = None
 
     # ------------------------------------------------------------------
     async def _ensure_pacat(self) -> asyncio.subprocess.Process | None:
-        if not self.local:
+        if not (self.local and self.local_enabled):
             return None
         if self._pacat and self._pacat.returncode is None:
             return self._pacat
@@ -102,9 +108,11 @@ class AudioOutput:
                 q.put_nowait(data)
 
     # ------------------------------------------------------------------
-    async def write(self, pcm: bytes) -> None:
+    async def write(self, pcm: bytes, local: bool = True) -> None:
         if not pcm:
             return
+        if local:
+            self._last_write = time.monotonic()
         samples = np.frombuffer(pcm, dtype="<i2")
         self.level = 0.7 * self.level + 0.3 * float(np.abs(samples).mean() / 32768.0) if samples.size else 0.0
 
@@ -117,7 +125,7 @@ class AudioOutput:
                 except (asyncio.TimeoutError, ConnectionError):
                     await kill(lame)
 
-        if self.local:
+        if local and self.local and self.local_enabled:
             player = await self._ensure_pacat()
             if player and player.stdin and not player.stdin.is_closing():
                 gain = 0.0 if self.muted else (self.volume / 100.0) ** 2
@@ -137,7 +145,23 @@ class AudioOutput:
     def add_client(self) -> asyncio.Queue[bytes]:
         q: asyncio.Queue[bytes] = asyncio.Queue()
         self._clients.add(q)
+        if self._keepalive is None or self._keepalive.done():
+            self._keepalive = asyncio.create_task(self._feed_silence())
         return q
+
+    async def _feed_silence(self) -> None:
+        """Keep the MP3 stream flowing while the radio is stopped, tuning or
+        scanning – browsers would otherwise give up on the stream."""
+        chunk = bytes(RATE // 10 * CHANNELS * 2)  # 100 ms
+        while self._clients:
+            await asyncio.sleep(0.1)
+            if time.monotonic() - self._last_write > 0.5:
+                await self.write(chunk, local=False)
+
+    async def set_local_enabled(self, enabled: bool) -> None:
+        self.local_enabled = bool(enabled)
+        if not self.local_enabled:
+            await self.stop_local()  # release the sound card
 
     def remove_client(self, q: asyncio.Queue[bytes]) -> None:
         self._clients.discard(q)
@@ -153,6 +177,8 @@ class AudioOutput:
             self._pacat = None
 
     async def close(self) -> None:
+        if self._keepalive:
+            self._keepalive.cancel()
         await self.stop_local()
         if self._lame:
             await kill(self._lame)

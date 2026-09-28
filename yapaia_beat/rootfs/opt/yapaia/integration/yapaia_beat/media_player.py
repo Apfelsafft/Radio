@@ -16,7 +16,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import LOGO_URL
+from .const import LOGO_URL, STREAM_URL
 from .coordinator import YapaiaCoordinator
 from .entity import YapaiaEntity
 
@@ -134,6 +134,9 @@ class YapaiaMediaPlayer(YapaiaEntity, MediaPlayerEntity):
             "logo": self.coordinator.logo_url(st) if st else None,
             "slide": self.coordinator.slide_url(),
             "auto_follow": d.get("auto_follow"),
+            "local_output": d.get("local_output"),
+            "local_audio": d.get("local_audio"),
+            "stream_path": STREAM_URL,
             "follow_message": (d.get("follow") or {}).get("message"),
             "scan_running": (d.get("scan") or {}).get("running"),
             "radio_state": d.get("state"),

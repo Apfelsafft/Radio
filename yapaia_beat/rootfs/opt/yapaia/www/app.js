@@ -102,8 +102,8 @@ function render(s) {
   $("#play-icon").innerHTML = s.playing ? '<path d="M6 6h12v12H6z"/>' : '<path d="M8 5v14l11-7z"/>';
   $("#btn-fav").classList.toggle("active", !!(st && st.favorite));
   $$(".fm-only").forEach((b) => (b.hidden = s.band === "dab"));
-  if (document.activeElement !== $("#volume")) $("#volume").value = s.volume;
-  $("#volume-text").textContent = s.muted ? "stumm" : s.volume;
+  renderOutput();
+  updateMediaSession();
   $("#mute-path").setAttribute("d", s.muted
     ? "M16.5 12A4.5 4.5 0 0 0 14 8v2.2l2.5 2.5V12zM19 12a7 7 0 0 1-.6 2.8l1.5 1.5A8.9 8.9 0 0 0 21 12a9 9 0 0 0-7-8.8v2.1A7 7 0 0 1 19 12zM4.3 3 3 4.3 7.7 9H3v6h4l5 5v-6.7l4.3 4.3a7 7 0 0 1-2.3 1.2v2.1a9 9 0 0 0 3.7-1.8l2 2L21 19.7l-9-9zM12 4 9.9 6.1 12 8.2V4z"
     : "M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0 0 14 8v8a4.5 4.5 0 0 0 2.5-4z");
@@ -226,7 +226,10 @@ $("#edit-delete").addEventListener("click", async () => {
 });
 
 /* ------------------------------------------------------------------ controls */
-$("#btn-play").onclick = () => api(S && S.playing ? "api/stop" : "api/play", {});
+$("#btn-play").onclick = () => {
+  if (!(S && S.playing) && player.wanted) player.start(); // keep it inside the user gesture (iOS)
+  api(S && S.playing ? "api/stop" : "api/play", {});
+};
 $("#btn-next").onclick = () => api("api/next", {});
 $("#btn-prev").onclick = () => api("api/previous", {});
 $("#btn-seek-up").onclick = () => api("api/seek", { direction: "up" });
@@ -234,7 +237,10 @@ $("#btn-seek-down").onclick = () => api("api/seek", { direction: "down" });
 $("#btn-fav").onclick = () => S && S.station && api("api/favorites", { id: S.station.id, favorite: !S.station.favorite }).then(loadStations);
 $("#btn-mute").onclick = () => api("api/volume", { muted: !(S && S.muted) });
 $("#volume").addEventListener("input", (e) => { $("#volume-text").textContent = e.target.value; });
-$("#volume").addEventListener("change", (e) => api("api/volume", { volume: Number(e.target.value) }));
+$("#volume").addEventListener("change", (e) => {
+  if (browserOnly()) { player.setVolume(Number(e.target.value)); renderOutput(); }
+  else api("api/volume", { volume: Number(e.target.value) });
+});
 $("#follow").addEventListener("change", (e) => api("api/settings", { auto_follow: e.target.checked }));
 $$("[data-scan]").forEach((b) => (b.onclick = () => api("api/scan", { band: b.dataset.scan })));
 $("#scan-cancel").onclick = () => api("api/scan/cancel", {});
@@ -243,6 +249,115 @@ $$(".tabs button").forEach((b) => b.addEventListener("click", () => {
   $$(".tab").forEach((t) => (t.hidden = t.id !== `tab-${b.dataset.tab}`));
   if (b.dataset.tab === "stations") loadStations();
 }));
+
+/* ------------------------------------------------------------------ browser playback
+ * The browser plays the add-on's MP3 stream (through HA ingress, so no extra
+ * port is needed).  The choice is stored per device. */
+const IS_IOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+const store = {
+  get: (k, d) => { try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } },
+  set: (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* private mode */ } },
+};
+const player = {
+  audio: null,
+  wanted: store.get("yapaia.browserAudio", false),
+  blocked: false,
+  volume: store.get("yapaia.browserVolume", 80),
+  _retry: null,
+  el() {
+    if (!this.audio) {
+      const a = (this.audio = new Audio());
+      a.preload = "none";
+      const again = () => {
+        if (!this.wanted) return;
+        clearTimeout(this._retry);
+        this._retry = setTimeout(() => this.start(), 2000);
+      };
+      a.addEventListener("error", again);
+      a.addEventListener("ended", again);
+      a.addEventListener("playing", () => { this.blocked = false; renderOutput(); });
+    }
+    return this.audio;
+  },
+  start() {
+    const a = this.el();
+    a.src = `stream.mp3?t=${Date.now()}`;
+    a.volume = this.volume / 100;
+    const p = a.play();
+    if (p && p.catch) p.catch(() => { this.blocked = true; renderOutput(); });
+  },
+  stop() {
+    clearTimeout(this._retry);
+    if (this.audio) { this.audio.pause(); this.audio.removeAttribute("src"); this.audio.load(); }
+  },
+  setWanted(on) {
+    this.wanted = on; store.set("yapaia.browserAudio", on);
+    if (on) this.start(); else { this.blocked = false; this.stop(); }
+  },
+  setVolume(v) {
+    this.volume = v; store.set("yapaia.browserVolume", v);
+    if (this.audio) this.audio.volume = v / 100;
+  },
+  get playing() { return !!(this.audio && !this.audio.paused && this.audio.src); },
+};
+
+function browserOnly() { return player.wanted && !(S && S.local_output && S.local_audio); }
+
+function renderOutput() {
+  if (!S) return;
+  const local = S.local_audio && S.local_output;
+  const mode = local && player.wanted ? "both" : player.wanted ? "browser" : "local";
+  $$("#output button").forEach((b) => {
+    b.classList.toggle("active", b.dataset.out === mode);
+    if (b.dataset.out !== "browser") b.disabled = !S.local_audio;
+  });
+  $("#browser-unlock").hidden = !(player.wanted && player.blocked);
+  let hint = "";
+  if (!S.local_audio) hint = "Mini-PC-Ausgabe nicht verfügbar (Audio im Add-on prüfen)";
+  else if (player.wanted && IS_IOS) hint = "Lautstärke am iPad/iPhone mit den Tasten regeln";
+  else if (player.wanted) hint = "Wiedergabe ca. 2–4 s verzögert";
+  $("#out-hint").textContent = hint;
+  const vol = browserOnly() ? player.volume : S.volume;
+  if (document.activeElement !== $("#volume")) $("#volume").value = vol;
+  $("#volume-text").textContent = !browserOnly() && S.muted ? "stumm" : vol;
+}
+
+$$("#output button").forEach((b) => b.addEventListener("click", () => {
+  let out = b.dataset.out;
+  // without host speakers "this device" simply toggles
+  if (S && !S.local_audio && out === "browser" && player.wanted) out = "local";
+  player.setWanted(out !== "local"); // play() runs inside the click (needed on iOS)
+  if (S && S.local_audio) api("api/settings", { local_output: out !== "browser" });
+  renderOutput();
+}));
+$("#browser-unlock").onclick = () => player.start();
+
+/* lock screen / car display: station, logo and buttons via the Media Session API */
+function updateMediaSession() {
+  if (!("mediaSession" in navigator) || !S || !player.wanted) return;
+  const st = S.station;
+  const title = S.title ? (S.artist ? `${S.artist} – ${S.title}` : S.title) : (S.radiotext || (st && st.name) || "Yapaia Beat");
+  const key = [title, st && st.id, st && st.logo_url].join("|");
+  if (key === updateMediaSession.key) return;
+  updateMediaSession.key = key;
+  navigator.mediaSession.metadata = new MediaMetadata({
+    title,
+    artist: st ? st.name : "Yapaia Beat",
+    album: "Yapaia Beat",
+    artwork: st ? [{ src: new URL(st.logo_url, location.href).href, sizes: "256x256" }] : [],
+  });
+}
+if ("mediaSession" in navigator) {
+  const ms = navigator.mediaSession;
+  const safe = (fn) => { try { fn(); } catch (e) { /* unsupported action */ } };
+  safe(() => ms.setActionHandler("play", () => { player.start(); api("api/play", {}); }));
+  safe(() => ms.setActionHandler("pause", () => api("api/stop", {})));
+  safe(() => ms.setActionHandler("stop", () => api("api/stop", {})));
+  safe(() => ms.setActionHandler("nexttrack", () => api("api/next", {})));
+  safe(() => ms.setActionHandler("previoustrack", () => api("api/previous", {})));
+}
+
+if (player.wanted) player.start(); // may be blocked until the first tap → button
 
 connect();
 loadStations();

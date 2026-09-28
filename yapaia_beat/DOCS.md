@@ -82,6 +82,7 @@ entity: media_player.yapaia_beat
 style: retro          # retro (Holz & LCD) oder modern
 max_presets: 12       # Anzahl Favoriten-Tasten, 0 = aus
 show_slide: true      # DAB+-Slideshow anzeigen
+show_output: true     # Tasten Mini-PC / dieses Gerät
 follow_entity: switch.yapaia_beat_auto_follow
 ```
 
@@ -150,6 +151,7 @@ tap_action:
 | `sensor.yapaia_beat_scan` / `_follow` | Status Suchlauf / Senderverfolgung |
 | `switch.yapaia_beat_auto_follow` | Automatische Senderverfolgung |
 | `switch.yapaia_beat_mute` | Stumm |
+| `switch.yapaia_beat_local_output` | Lautsprecher am Mini-PC an/aus (Browser-Stream läuft weiter) |
 | `button.yapaia_beat_*` | Suchlauf FM/DAB+/beide, nächster/vorheriger Favorit, FM ±, Favorit umschalten |
 | `image.yapaia_beat_logo` / `_slideshow` | Senderlogo / DAB+-Slideshow |
 
@@ -183,6 +185,38 @@ actions:
     data:
       volume_level: 0.3
 ```
+
+## Radio im Browser hören (iPad, Handy, Android-Autoradio)
+
+Der Ton kann statt – oder zusätzlich zu – den Lautsprechern am
+Home-Assistant-Rechner direkt auf dem Gerät ausgegeben werden, mit dem du
+gerade Home Assistant bedienst:
+
+- **Add-on-Oberfläche** (Seitenleiste „Yapaia Beat"): *Ausgabe* →
+  **Mini-PC**, **Dieses Gerät** oder **Beide**.
+- **Radio-Karte**: Taste 🔈 schaltet die Lautsprecher am Mini-PC,
+  Taste 📱 die Wiedergabe auf diesem Gerät.
+- **Ohne eigene Karte**: *Medien* in der Seitenleiste → Ausgabegerät
+  „Dieser Browser" → *Yapaia Beat → Live*.
+
+Die Auswahl „Dieses Gerät" wird pro Gerät/Browser gespeichert. Der Mini-PC
+lässt sich zusätzlich über `switch.yapaia_beat_local_output` schalten (z. B. in
+einer Automation, wenn das Autoradio verbunden ist).
+
+Hinweise:
+
+- Browser erlauben Ton erst nach einem Antippen. Nach einem Neuladen der Seite
+  blinkt die 📱-Taste bzw. erscheint „▶ Ton hier aktivieren" – einmal tippen.
+- Die Wiedergabe im Browser ist ca. 2–4 Sekunden verzögert.
+- Auf iPad/iPhone regelt man die Lautstärke mit den Gerätetasten (Safari
+  erlaubt keine Lautstärkeregelung per Webseite). Auf Android funktioniert
+  der Regler.
+- Sender, Logo und die Tasten vor/zurück erscheinen auch auf dem
+  Sperrbildschirm bzw. im Medien-Widget des Android-Autoradios.
+- Die Home-Assistant-App (Companion) pausiert den Ton evtl., wenn sie in den
+  Hintergrund geht. Fürs Autoradio daher die App/den Browser im Vordergrund
+  lassen – oder den MP3-Stream (siehe unten) in einer Radio-/Player-App wie
+  VLC öffnen, die im Hintergrund weiterspielt.
 
 ## MP3-Stream
 

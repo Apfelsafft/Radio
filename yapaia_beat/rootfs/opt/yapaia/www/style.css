@@ -127,3 +127,7 @@ footer { text-align: center; color: var(--muted); font-size: 12px; padding: 16px
   #now-slide { margin-top: 0; max-height: 150px; }
   .switch { margin-left: 0; }
 }
+
+.out-row { display: flex; align-items: center; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
+.out-row .seg button:disabled { opacity: .4; cursor: not-allowed; }
+.small { font-size: 12px; }

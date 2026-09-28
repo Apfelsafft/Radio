@@ -1,13 +1,19 @@
 {
   "domain": "yapaia_beat",
   "name": "Yapaia Beat",
-  "codeowners": ["@apfelsafft"],
+  "codeowners": [
+    "@apfelsafft"
+  ],
   "config_flow": true,
-  "dependencies": ["http", "frontend"],
+  "dependencies": [
+    "http",
+    "frontend",
+    "media_source"
+  ],
   "documentation": "https://github.com/apfelsafft/radio",
   "integration_type": "device",
   "iot_class": "local_push",
   "issue_tracker": "https://github.com/apfelsafft/radio/issues",
   "requirements": [],
-  "version": "1.0.0"
+  "version": "1.1.0"
 }

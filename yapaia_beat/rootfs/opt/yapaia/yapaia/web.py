@@ -191,7 +191,9 @@ async def settings(request: web.Request) -> web.Response:
     radio = _radio(request)
     if "auto_follow" in data:
         radio.set_auto_follow(bool(data["auto_follow"]))
-    return _ok(auto_follow=radio.auto_follow)
+    if "local_output" in data:
+        await radio.set_local_output(bool(data["local_output"]))
+    return _ok(auto_follow=radio.auto_follow, local_output=radio.audio.local_enabled)
 
 
 @routes.post("/api/favorites")
