@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
+
+import aiohttp
 
 import voluptuous as vol
 from aiohttp import web
@@ -16,7 +19,7 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.typing import ConfigType
 
-from .const import CARD_PATH, CARD_URL, DOMAIN, VERSION
+from .const import CARD_PATH, CARD_URL, DOMAIN, STREAM_URL, VERSION
 from .coordinator import YapaiaCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -51,6 +54,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         _LOGGER.warning("Could not register the Yapaia Beat card automatically")
     hass.http.register_view(YapaiaLogoView())
     hass.http.register_view(YapaiaSlideView())
+    hass.http.register_view(YapaiaStreamView())
 
     async def _call(path: str, payload: dict) -> None:
         coords = _coordinators(hass)
@@ -152,3 +156,34 @@ class YapaiaSlideView(HomeAssistantView):
             if res:
                 return web.Response(body=res[0], content_type=res[1].split(";")[0], headers={"Cache-Control": "no-cache"})
         raise web.HTTPNotFound()
+
+
+class YapaiaStreamView(HomeAssistantView):
+    """Proxy of the add-on's MP3 stream so a dashboard can play the radio in
+    the browser.  Requires authentication – the card uses a signed URL
+    (``auth/sign_path``) because <audio> cannot send an auth header."""
+
+    url = STREAM_URL
+    name = "api:yapaia_beat:stream"
+    requires_auth = True
+
+    async def get(self, request: web.Request) -> web.StreamResponse:
+        coords = _coordinators(request.app["hass"])
+        if not coords:
+            raise web.HTTPNotFound()
+        coord = coords[0]
+        timeout = aiohttp.ClientTimeout(total=None, connect=5, sock_read=30)
+        try:
+            upstream = await coord.session.get(f"{coord.base}/stream.mp3", timeout=timeout)
+        except (aiohttp.ClientError, asyncio.TimeoutError) as err:
+            raise web.HTTPBadGateway(text=str(err)) from err
+        resp = web.StreamResponse(headers={"Content-Type": "audio/mpeg", "Cache-Control": "no-cache, no-store"})
+        try:
+            await resp.prepare(request)
+            async for chunk in upstream.content.iter_any():
+                await resp.write(chunk)
+        except (ConnectionResetError, aiohttp.ClientError, asyncio.TimeoutError):
+            pass
+        finally:
+            upstream.close()
+        return resp

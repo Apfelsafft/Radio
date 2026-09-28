@@ -40,6 +40,7 @@ class Radio:
         self.follow: dict[str, Any] = {"active": False, "message": None, "last_switch": None}
         self.auto_follow = bool(store.settings.get("auto_follow", opts.auto_follow))
         audio.volume = int(store.settings.get("volume", opts.default_volume))
+        audio.local_enabled = bool(store.settings.get("local_output", True))
         self._listeners: set[asyncio.Queue[str]] = set()
         self._lock = asyncio.Lock()
         self._scan_cancel = asyncio.Event()
@@ -205,6 +206,14 @@ class Radio:
             self.store.save()
         if muted is not None:
             self.audio.muted = bool(muted)
+        self.changed()
+
+    async def set_local_output(self, enabled: bool) -> None:
+        """Sound from the speakers of the Home Assistant host on/off (the
+        MP3 stream for browsers keeps running either way)."""
+        await self.audio.set_local_enabled(enabled)
+        self.store.settings["local_output"] = self.audio.local_enabled
+        self.store.save()
         self.changed()
 
     def set_auto_follow(self, enabled: bool) -> None:
@@ -596,6 +605,7 @@ class Radio:
             "volume": self.audio.volume,
             "muted": self.audio.muted,
             "local_audio": self.audio.local,
+            "local_output": self.audio.local_enabled,
             "stream_clients": self.audio.client_count,
             "auto_follow": self.auto_follow,
             "follow": dict(self.follow),

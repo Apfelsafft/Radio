@@ -7,11 +7,14 @@
  *   style: retro | modern                            # optional, default retro
  *   max_presets: 12                                  # optional, 0 hides presets
  *   show_slide: true                                 # optional, DAB+ slideshow
+ *   show_output: true                                # optional, Mini-PC / this device buttons
  */
 
-const CARD_VERSION = "1.0.0";
+const CARD_VERSION = "1.1.0";
 
 const ICONS = {
+  speaker: "M17 2H7a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2zm-5 2a2 2 0 1 1 0 4 2 2 0 0 1 0-4zm0 16a4 4 0 1 1 0-8 4 4 0 0 1 0 8zm0-6a2 2 0 1 0 0 4 2 2 0 0 0 0-4z",
+  device: "M17 1H7a2 2 0 0 0-2 2v18a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V3a2 2 0 0 0-2-2zm0 18H7V5h10v14zm-7-6.5 5-3.5-5-3.5v7z",
   prev: "M6 6h2v12H6zm3.5 6 8.5 6V6z",
   next: "M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z",
   play: "M8 5v14l11-7z",
@@ -25,6 +28,108 @@ const ICONS = {
 
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const svg = (d) => `<svg viewBox="0 0 24 24"><path d="${d}"/></svg>`;
+
+/*
+ * Plays the radio in this browser: the integration proxies the add-on's MP3
+ * stream at /api/yapaia_beat/stream; <audio> can't send auth headers, so we
+ * use a signed URL.  One player per browser tab, shared by all cards; the
+ * choice is remembered per device.
+ */
+const BrowserPlayer = {
+  audio: null,
+  url: null,
+  signedAt: 0,
+  wanted: (() => { try { return localStorage.getItem("yapaia-beat.browser") === "1"; } catch (e) { return false; } })(),
+  volume: (() => { try { return Number(localStorage.getItem("yapaia-beat.volume") || 80); } catch (e) { return 80; } })(),
+  blocked: false,
+  _retry: null,
+  _signing: false,
+  _listeners: new Set(),
+
+  async prepare(hass, path) {
+    // refresh the signed URL well before it expires (24 h)
+    if (!path || this._signing || (this.url && Date.now() - this.signedAt < 6 * 3600 * 1000)) return;
+    this._signing = true;
+    try {
+      const res = await hass.callWS({ type: "auth/sign_path", path, expires: 24 * 3600 });
+      this.url = res.path;
+      this.signedAt = Date.now();
+      if (this.wanted && !this.playing) this.start();
+    } catch (err) {
+      console.warn("Yapaia Beat: could not sign stream URL", err);
+    } finally {
+      this._signing = false;
+    }
+  },
+  el() {
+    if (!this.audio) {
+      const a = (this.audio = new Audio());
+      a.preload = "none";
+      const again = () => {
+        if (!this.wanted) return;
+        clearTimeout(this._retry);
+        this._retry = setTimeout(() => this.start(), 2000);
+      };
+      a.addEventListener("error", again);
+      a.addEventListener("ended", again);
+      a.addEventListener("playing", () => { this.blocked = false; this._notify(); });
+    }
+    return this.audio;
+  },
+  start() {
+    if (!this.url) return;
+    const a = this.el();
+    // no cache buster: extra query parameters would invalidate the signature
+    a.removeAttribute("src");
+    a.load();
+    a.src = this.url;
+    a.volume = this.volume / 100;
+    const p = a.play();
+    if (p && p.catch) p.catch(() => { this.blocked = true; this._notify(); });
+  },
+  stop() {
+    clearTimeout(this._retry);
+    if (this.audio) { this.audio.pause(); this.audio.removeAttribute("src"); this.audio.load(); }
+  },
+  setWanted(on) {
+    this.wanted = on;
+    try { localStorage.setItem("yapaia-beat.browser", on ? "1" : "0"); } catch (e) { /* ignore */ }
+    if (on) this.start(); else { this.blocked = false; this.stop(); }
+  },
+  setVolume(v) {
+    this.volume = v;
+    try { localStorage.setItem("yapaia-beat.volume", String(v)); } catch (e) { /* ignore */ }
+    if (this.audio) this.audio.volume = v / 100;
+  },
+  get playing() { return !!(this.audio && !this.audio.paused && this.audio.src); },
+  _notify() { this._listeners.forEach((fn) => fn()); },
+  updateSession(a, hass) {
+    // station + logo on the lock screen / car display (Android, iOS)
+    if (!("mediaSession" in navigator) || !this.wanted) return;
+    const title = a.media_title || a.station_name || "Yapaia Beat";
+    const key = [title, a.station_name, a.logo].join("|");
+    if (key === this._sessionKey) return;
+    this._sessionKey = key;
+    this._hass = hass;
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title,
+      artist: a.media_artist || a.station_name || "",
+      album: "Yapaia Beat",
+      artwork: a.logo ? [{ src: new URL(a.logo, location.origin).href, sizes: "256x256" }] : [],
+    });
+    if (!this._handlers) {
+      this._handlers = true;
+      const call = (service) => this._hass && this._hass.callService("media_player", service, { entity_id: this._entity });
+      const set = (action, fn) => { try { navigator.mediaSession.setActionHandler(action, fn); } catch (e) { /* unsupported */ } };
+      set("play", () => { this.start(); call("media_play"); });
+      set("pause", () => call("media_stop"));
+      set("stop", () => call("media_stop"));
+      set("nexttrack", () => call("media_next_track"));
+      set("previoustrack", () => call("media_previous_track"));
+    }
+  },
+};
+window.YapaiaBeatPlayer = BrowserPlayer;
 
 class YapaiaBeatCard extends HTMLElement {
   static getStubConfig(hass) {
@@ -43,6 +148,7 @@ class YapaiaBeatCard extends HTMLElement {
         },
         { name: "max_presets", selector: { number: { min: 0, max: 30, mode: "box" } } },
         { name: "show_slide", selector: { boolean: {} } },
+        { name: "show_output", selector: { boolean: {} } },
       ],
       computeLabel: (s) => ({
         entity: "Yapaia Beat Media Player",
@@ -50,13 +156,14 @@ class YapaiaBeatCard extends HTMLElement {
         style: "Design",
         max_presets: "Anzahl Favoriten-Tasten",
         show_slide: "DAB+ Slideshow anzeigen",
+        show_output: "Ausgabe-Tasten (Mini-PC / dieses Gerät)",
       }[s.name]),
     };
   }
 
   setConfig(config) {
     if (!config.entity) throw new Error("entity muss gesetzt sein (media_player.yapaia_beat)");
-    this._config = { style: "retro", max_presets: 12, show_slide: true, ...config };
+    this._config = { style: "retro", max_presets: 12, show_slide: true, show_output: true, ...config };
     if (!this._config.follow_entity) {
       this._config.follow_entity = config.entity.replace("media_player.", "switch.") + "_auto_follow";
     }
@@ -66,6 +173,8 @@ class YapaiaBeatCard extends HTMLElement {
 
   set hass(hass) {
     this._hass = hass;
+    const s = hass.states[this._config && this._config.entity];
+    if (s) BrowserPlayer.prepare(hass, s.attributes.stream_path);
     this._render();
   }
 
@@ -75,6 +184,11 @@ class YapaiaBeatCard extends HTMLElement {
 
   getGridOptions() {
     return { columns: 12, min_columns: 6, rows: "auto" };
+  }
+
+  _browserOnly() {
+    const a = this._stateObj ? this._stateObj.attributes : {};
+    return BrowserPlayer.wanted && !(a.local_audio && a.local_output !== false);
   }
 
   _call(domain, service, data = {}) {
@@ -110,6 +224,8 @@ class YapaiaBeatCard extends HTMLElement {
               <input type="range" min="0" max="100" step="1" class="volume">
             </div>
             <button class="b follow small" title="Automatische Senderverfolgung">${svg(ICONS.follow)}</button>
+            <button class="b out-local small" title="Lautsprecher am Mini-PC">${svg(ICONS.speaker)}</button>
+            <button class="b out-device small" title="Auf diesem Gerät abspielen">${svg(ICONS.device)}</button>
           </div>
           <div class="msg"></div>
         </div>
@@ -121,12 +237,28 @@ class YapaiaBeatCard extends HTMLElement {
       song: q(".song"), bars: [...card.querySelectorAll(".sig i")], st: q(".st"), fo: q(".fo"), slide: q(".slide"),
       presets: q(".presets"), play: q(".play"), fav: q(".fav"), mute: q(".mute"), volume: q(".volume"),
       follow: q(".follow"), msg: q(".msg"), marquee: q(".marquee"),
+      outLocal: q(".out-local"), outDevice: q(".out-device"),
     };
     q(".prev").onclick = () => this._call("media_player", "media_previous_track");
     q(".next").onclick = () => this._call("media_player", "media_next_track");
-    this._el.play.onclick = () => this._call("media_player", this._playing ? "media_stop" : "media_play");
+    this._el.play.onclick = () => {
+      if (!this._playing && BrowserPlayer.wanted) BrowserPlayer.start(); // inside the tap (iOS)
+      this._call("media_player", this._playing ? "media_stop" : "media_play");
+    };
+    this._el.outDevice.onclick = () => {
+      BrowserPlayer.setWanted(!BrowserPlayer.wanted);
+      this._render();
+    };
+    this._el.outLocal.onclick = () => {
+      const sw = this._config.entity.replace("media_player.", "switch.") + "_local_output";
+      const on = this._stateObj && this._stateObj.attributes.local_output;
+      this._hass.callService("switch", on ? "turn_off" : "turn_on", { entity_id: sw });
+    };
     this._el.mute.onclick = () => this._call("media_player", "volume_mute", { is_volume_muted: !this._muted });
-    this._el.volume.onchange = (e) => this._call("media_player", "volume_set", { volume_level: Number(e.target.value) / 100 });
+    this._el.volume.onchange = (e) => {
+      if (this._browserOnly()) { BrowserPlayer.setVolume(Number(e.target.value)); this._render(); }
+      else this._call("media_player", "volume_set", { volume_level: Number(e.target.value) / 100 });
+    };
     this._el.follow.onclick = () => {
       const s = this._hass.states[this._config.follow_entity];
       if (s) this._hass.callService("switch", s.state === "on" ? "turn_off" : "turn_on", { entity_id: this._config.follow_entity });
@@ -143,6 +275,23 @@ class YapaiaBeatCard extends HTMLElement {
     this._el.logo.onload = () => { this._el.logo.style.visibility = "visible"; };
     this._el.slide.onerror = () => { this._el.slide.hidden = true; };
     this._built = true;
+    BrowserPlayer._entity = this._config.entity;
+    if (!this._onPlayer) {
+      this._onPlayer = () => this._render();
+      BrowserPlayer._listeners.add(this._onPlayer);
+    }
+  }
+
+  disconnectedCallback() {
+    if (this._onPlayer) BrowserPlayer._listeners.delete(this._onPlayer);
+    this._onPlayer = null;
+  }
+
+  connectedCallback() {
+    if (this._built && !this._onPlayer) {
+      this._onPlayer = () => this._render();
+      BrowserPlayer._listeners.add(this._onPlayer);
+    }
   }
 
   _render() {
@@ -199,7 +348,16 @@ class YapaiaBeatCard extends HTMLElement {
     e.fav.innerHTML = svg(a.favorite ? ICONS.star : ICONS.starOff);
     e.fav.classList.toggle("active", !!a.favorite);
     e.mute.innerHTML = svg(this._muted ? ICONS.mute : ICONS.volDown);
-    if (!e.volume.matches(":active")) e.volume.value = Math.round((a.volume_level || 0) * 100);
+    const vol = this._browserOnly() ? BrowserPlayer.volume : Math.round((a.volume_level || 0) * 100);
+    if (!e.volume.matches(":active")) e.volume.value = vol;
+    const localOn = a.local_audio && a.local_output !== false;
+    e.outLocal.hidden = !this._config.show_output || !a.local_audio;
+    e.outDevice.hidden = !this._config.show_output || !a.stream_path;
+    e.outLocal.classList.toggle("active", !!localOn);
+    e.outDevice.classList.toggle("active", BrowserPlayer.wanted);
+    e.outDevice.classList.toggle("blink", BrowserPlayer.wanted && BrowserPlayer.blocked);
+    e.outDevice.title = BrowserPlayer.blocked ? "Tippen, um den Ton auf diesem Gerät zu starten" : "Auf diesem Gerät abspielen";
+    BrowserPlayer.updateSession(a, this._hass);
     e.msg.textContent = a.follow_message || "";
 
     const favs = (a.favorites || []).slice(0, this._config.max_presets);
@@ -275,6 +433,8 @@ YapaiaBeatCard.styles = `
   .b.small { width: 34px; height: 34px; }
   .b.small svg { width: 18px; height: 18px; }
   .b.active { color: #ffcf5a; }
+  .b.blink { animation: yb-blink 1s ease-in-out infinite; }
+  @keyframes yb-blink { 50% { color: #ff6b35; box-shadow: 0 0 10px #ff6b35; } }
   .b[hidden] { display: none; }
   .vol { flex: 1; display: flex; align-items: center; gap: 6px; min-width: 120px; }
   .volume { flex: 1; accent-color: var(--accent); }
@@ -283,7 +443,17 @@ YapaiaBeatCard.styles = `
   @media (max-width: 420px) { .slide { display: none; } .logo-wrap { width: 72px; height: 72px; } .name { font-size: 17px; } }
 `;
 
-customElements.define("yapaia-beat-card", YapaiaBeatCard);
+// The HA frontend may swap its custom element registry while extra modules
+// load; make sure the card stays registered (re-check for a while).
+const defineCard = () => {
+  if (!customElements.get("yapaia-beat-card")) {
+    try { customElements.define("yapaia-beat-card", YapaiaBeatCard); } catch (e) { /* already defined */ }
+  }
+};
+defineCard();
+let defineChecks = 0;
+const defineTimer = setInterval(() => { defineCard(); if (++defineChecks > 60) clearInterval(defineTimer); }, 500);
+window.addEventListener("load", defineCard);
 window.customCards = window.customCards || [];
 window.customCards.push({
   type: "yapaia-beat-card",

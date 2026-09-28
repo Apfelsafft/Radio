@@ -13,7 +13,9 @@ from .entity import YapaiaEntity
 
 
 async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities: AddEntitiesCallback) -> None:
-    async_add_entities([YapaiaFollowSwitch(entry.runtime_data), YapaiaMuteSwitch(entry.runtime_data)])
+    async_add_entities(
+        [YapaiaFollowSwitch(entry.runtime_data), YapaiaMuteSwitch(entry.runtime_data), YapaiaLocalOutputSwitch(entry.runtime_data)]
+    )
 
 
 class YapaiaFollowSwitch(YapaiaEntity, SwitchEntity):
@@ -48,3 +50,26 @@ class YapaiaMuteSwitch(YapaiaEntity, SwitchEntity):
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         await self.coordinator.command("/api/volume", {"muted": False})
+
+
+class YapaiaLocalOutputSwitch(YapaiaEntity, SwitchEntity):
+    """Sound from the speakers of the Home Assistant host (Mini-PC)."""
+
+    _attr_icon = "mdi:speaker"
+
+    def __init__(self, coordinator: YapaiaCoordinator) -> None:
+        super().__init__(coordinator, "local_output", "switch")
+
+    @property
+    def available(self) -> bool:
+        return super().available and bool((self.coordinator.data or {}).get("local_audio"))
+
+    @property
+    def is_on(self) -> bool:
+        return bool((self.coordinator.data or {}).get("local_output", True))
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        await self.coordinator.command("/api/settings", {"local_output": True})
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        await self.coordinator.command("/api/settings", {"local_output": False})
