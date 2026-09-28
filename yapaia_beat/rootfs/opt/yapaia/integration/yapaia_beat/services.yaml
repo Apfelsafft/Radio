@@ -1,0 +1,38 @@
+play:
+  fields:
+    station:
+      example: "SWR3"
+      selector:
+        text:
+    station_id:
+      example: "fm-d318"
+      selector:
+        text:
+    frequency:
+      example: 98.3
+      selector:
+        number:
+          min: 87.5
+          max: 108
+          step: 0.05
+          unit_of_measurement: MHz
+          mode: box
+scan:
+  fields:
+    band:
+      default: all
+      selector:
+        select:
+          options:
+            - fm
+            - dab
+            - all
+set_favorite:
+  fields:
+    station_id:
+      selector:
+        text:
+    favorite:
+      default: true
+      selector:
+        boolean:

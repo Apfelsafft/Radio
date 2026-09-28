@@ -1,0 +1,248 @@
+/* Yapaia Beat web UI – works behind Home Assistant ingress (relative URLs only). */
+"use strict";
+
+const $ = (s) => document.querySelector(s);
+const $$ = (s) => [...document.querySelectorAll(s)];
+let S = null; // last status
+let stations = [];
+let band = "";
+let editId = null;
+
+const fmtFreq = (f) => (f == null ? "" : `${Number(f).toFixed(f * 100 % 10 ? 2 : 1).replace(".", ",")} MHz`);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+async function api(path, body, method) {
+  const opts = { method: method || (body === undefined ? "GET" : "POST"), headers: {} };
+  if (body instanceof FormData) opts.body = body;
+  else if (body !== undefined) { opts.body = JSON.stringify(body); opts.headers["Content-Type"] = "application/json"; }
+  const r = await fetch(path, opts);
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok || data.ok === false) { toast(data.error || `Fehler ${r.status}`); throw new Error(data.error); }
+  return data;
+}
+
+function toast(msg) {
+  const t = $("#toast");
+  t.textContent = msg; t.hidden = false;
+  clearTimeout(toast.t); toast.t = setTimeout(() => (t.hidden = true), 3500);
+}
+
+function sub(st) {
+  if (!st) return "";
+  if (st.band === "fm") {
+    const extra = st.frequencies && st.frequencies.length > 1 ? ` (+${st.frequencies.length - 1})` : "";
+    return `UKW ${fmtFreq(st.frequency)}${extra}`;
+  }
+  return `DAB+ ${st.channel || ""}${st.ensemble ? " · " + st.ensemble : ""}`;
+}
+
+/* ------------------------------------------------------------------ websocket */
+function connect() {
+  const url = new URL("api/ws", location.href);
+  url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+  const ws = new WebSocket(url);
+  ws.onopen = () => { $("#conn").textContent = "verbunden"; $("#conn").className = "chip ok"; };
+  ws.onmessage = (e) => render(JSON.parse(e.data));
+  ws.onclose = () => {
+    $("#conn").textContent = "getrennt"; $("#conn").className = "chip warn";
+    setTimeout(connect, 2000);
+  };
+}
+
+/* ------------------------------------------------------------------ now playing */
+let lastText = "", lastLogo = "", lastSlide = null, lastFavKey = "";
+function render(s) {
+  const prevCount = S ? S.station_count : null;
+  S = s;
+  const st = s.station;
+  const states = { idle: "Bereit", tuning: "Stimme ab …", playing: "Läuft", scanning: "Suchlauf", following: "Senderverfolgung", error: "Fehler" };
+  $("#now-state").textContent = states[s.state] || s.state;
+  $("#now-name").textContent = st ? st.name : "Kein Sender";
+  const meta = [];
+  if (s.band === "fm" && s.frequency) meta.push("UKW " + fmtFreq(s.frequency));
+  if (s.band === "dab" && s.channel) meta.push("DAB+ Kanal " + s.channel);
+  if (s.ensemble) meta.push(s.ensemble);
+  if (s.rds && s.rds.pi) meta.push("PI " + s.rds.pi.replace("0x", "").toUpperCase());
+  if (s.pty && s.pty !== "No PTY" && s.pty !== "None") meta.push(s.pty);
+  if (!s.playing && st) meta.push(sub(st));
+  $("#now-meta").textContent = meta.join(" · ");
+
+  let text = s.error ? "⚠ " + s.error : s.radiotext || (s.rds && s.rds.ps) || (s.playing ? "" : "Wähle einen Sender aus deinen Favoriten oder starte einen Suchlauf.");
+  if (s.state === "scanning") text = s.scan.message || "Suchlauf …";
+  if (text !== lastText) {
+    lastText = text;
+    const span = $("#now-text");
+    span.textContent = text || " ";
+    span.classList.remove("scroll");
+    requestAnimationFrame(() => {
+      if (span.scrollWidth > span.parentElement.clientWidth) {
+        span.style.setProperty("--dur", `${Math.max(8, text.length / 4)}s`);
+        span.classList.add("scroll");
+      }
+    });
+  }
+  $("#now-song").textContent = s.title ? (s.artist ? `${s.artist} – ${s.title}` : s.title) : "";
+
+  const logo = st ? st.logo_url : "api/logo/current";
+  if (logo !== lastLogo) { $("#now-logo").src = logo; lastLogo = logo; }
+  if (s.band === "dab" && s.slide_version) {
+    if (s.slide_version !== lastSlide) { lastSlide = s.slide_version; $("#now-slide").src = `api/slide?v=${s.slide_version}`; }
+    $("#now-slide").hidden = false;
+  } else { $("#now-slide").hidden = true; lastSlide = null; }
+  $("#now-slide").onerror = () => ($("#now-slide").hidden = true);
+
+  const sig = s.playing && s.signal != null ? s.signal : null;
+  $$("#bars i").forEach((b, i) => b.classList.toggle("on", sig != null && sig > i * 20 + 5));
+  $("#bars").classList.toggle("weak", sig != null && sig < 35);
+  $("#signal-text").textContent = sig == null ? "–" : `${Math.round(sig)} %${s.snr != null ? ` · ${Number(s.snr).toFixed(0)} dB` : ""}`;
+  $("#stereo").hidden = !(s.playing && s.stereo);
+  $("#tp").hidden = !(s.rds && s.rds.tp);
+  $("#follow-msg").textContent = s.follow && s.follow.message ? s.follow.message : "";
+
+  $("#play-icon").innerHTML = s.playing ? '<path d="M6 6h12v12H6z"/>' : '<path d="M8 5v14l11-7z"/>';
+  $("#btn-fav").classList.toggle("active", !!(st && st.favorite));
+  $$(".fm-only").forEach((b) => (b.hidden = s.band === "dab"));
+  if (document.activeElement !== $("#volume")) $("#volume").value = s.volume;
+  $("#volume-text").textContent = s.muted ? "stumm" : s.volume;
+  $("#mute-path").setAttribute("d", s.muted
+    ? "M16.5 12A4.5 4.5 0 0 0 14 8v2.2l2.5 2.5V12zM19 12a7 7 0 0 1-.6 2.8l1.5 1.5A8.9 8.9 0 0 0 21 12a9 9 0 0 0-7-8.8v2.1A7 7 0 0 1 19 12zM4.3 3 3 4.3 7.7 9H3v6h4l5 5v-6.7l4.3 4.3a7 7 0 0 1-2.3 1.2v2.1a9 9 0 0 0 3.7-1.8l2 2L21 19.7l-9-9zM12 4 9.9 6.1 12 8.2V4z"
+    : "M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0 0 14 8v8a4.5 4.5 0 0 0 2.5-4z");
+  $("#follow").checked = s.auto_follow;
+
+  // scan tab
+  $("#scan-bar").style.width = `${s.scan.running || s.scan.message ? s.scan.progress : 0}%`;
+  $("#scan-msg").textContent = s.scan.message || "";
+  $("#scan-cancel").hidden = !s.scan.running;
+  $$("[data-scan]").forEach((b) => (b.disabled = s.scan.running));
+  $("#stream-info").innerHTML = `Lokale Wiedergabe über Home Assistant Audio: <b>${s.local_audio ? "aktiv" : "aus"}</b> · MP3-Stream: <code>/stream.mp3</code> (${s.stream_clients} Hörer)`;
+
+  const favKey = JSON.stringify(s.favorites.map((f) => [f.id, f.name, f.logo_url])) + (s.active_favorite || "");
+  if (favKey !== lastFavKey) { lastFavKey = favKey; renderFavorites(); }
+  if (prevCount !== null && prevCount !== s.station_count) loadStations();
+  else markPlaying();
+}
+
+function renderFavorites() {
+  const grid = $("#fav-grid");
+  const favs = S.favorites;
+  $("#fav-empty").hidden = favs.length > 0;
+  grid.innerHTML = favs.map((f, i) => `
+    <div class="tile ${S.active_favorite === f.id ? "playing" : ""}" data-id="${esc(f.id)}">
+      ${i > 0 ? `<button class="move l" data-move="-1" title="nach vorne">‹</button>` : ""}
+      ${i < favs.length - 1 ? `<button class="move r" data-move="1" title="nach hinten">›</button>` : ""}
+      <img src="${esc(f.logo_url)}" alt="" loading="lazy">
+      <div class="name">${esc(f.name)}</div>
+      <div class="band">${esc(sub(f))}</div>
+    </div>`).join("");
+}
+
+$("#fav-grid").addEventListener("click", async (e) => {
+  const tile = e.target.closest(".tile");
+  if (!tile) return;
+  const move = e.target.closest("[data-move]");
+  if (move) {
+    e.stopPropagation();
+    const ids = S.favorites.map((f) => f.id);
+    const i = ids.indexOf(tile.dataset.id), j = i + Number(move.dataset.move);
+    [ids[i], ids[j]] = [ids[j], ids[i]];
+    await api("api/favorites", { order: ids });
+    return;
+  }
+  await api("api/play", { id: tile.dataset.id });
+});
+
+/* ------------------------------------------------------------------ stations list */
+async function loadStations() {
+  const q = $("#search").value.trim();
+  const params = new URLSearchParams({ q, band });
+  stations = await fetch(`api/stations?${params}`).then((r) => r.json());
+  const list = $("#station-list");
+  list.innerHTML = stations.map((st) => `
+    <li data-id="${esc(st.id)}" class="${st.available ? "" : "unavailable"}">
+      <img src="${esc(st.logo_url)}" alt="" loading="lazy">
+      <div class="txt" data-play><b>${esc(st.name)}</b><small>${esc(sub(st))}${st.pty ? " · " + esc(st.pty) : ""}${st.available ? "" : " · zuletzt nicht empfangen"}</small></div>
+      <button class="star ${st.favorite ? "on" : ""}" data-fav title="Favorit">${st.favorite ? "★" : "☆"}</button>
+      <button class="edit" data-edit title="Bearbeiten">✎</button>
+    </li>`).join("");
+  $("#stations-empty").hidden = stations.length > 0;
+  const f = parseFloat(q.replace(",", "."));
+  const direct = $("#direct-tune");
+  if (band !== "dab" && f >= 87.5 && f <= 108) {
+    direct.hidden = false;
+    direct.innerHTML = `<button class="primary" id="tune-direct">▶ ${fmtFreq(f)} direkt einstellen</button>`;
+    $("#tune-direct").onclick = () => api("api/play", { frequency: f });
+  } else direct.hidden = true;
+  markPlaying();
+}
+
+function markPlaying() {
+  const cur = S && S.station ? S.station.id : null;
+  $$("#station-list li").forEach((li) => li.classList.toggle("playing", li.dataset.id === cur));
+}
+
+$("#station-list").addEventListener("click", async (e) => {
+  const li = e.target.closest("li");
+  if (!li) return;
+  const st = stations.find((s) => s.id === li.dataset.id);
+  if (e.target.closest("[data-fav]")) {
+    await api("api/favorites", { id: st.id, favorite: !st.favorite });
+    loadStations();
+  } else if (e.target.closest("[data-edit]")) openEdit(st);
+  else if (e.target.closest("[data-play]")) await api("api/play", { id: st.id });
+});
+
+let searchTimer;
+$("#search").addEventListener("input", () => { clearTimeout(searchTimer); searchTimer = setTimeout(loadStations, 200); });
+$$("#band-filter button").forEach((b) => b.addEventListener("click", () => {
+  $$("#band-filter button").forEach((x) => x.classList.toggle("active", x === b));
+  band = b.dataset.band; loadStations();
+}));
+
+/* ------------------------------------------------------------------ edit dialog */
+function openEdit(st) {
+  editId = st.id;
+  $("#edit-name").value = st.name;
+  $("#edit-logo").src = st.logo_url;
+  $("#edit-info").textContent = [sub(st), st.pi && "PI " + st.pi, st.sid && "SId " + st.sid, st.original_name && `Original: ${st.original_name}`].filter(Boolean).join(" · ");
+  $("#edit").showModal();
+}
+async function refreshEdit() {
+  await loadStations();
+  const st = stations.find((s) => s.id === editId);
+  if (st) $("#edit-logo").src = st.logo_url + "&t=" + Date.now();
+}
+$("#edit-save").addEventListener("click", async () => { await api(`api/stations/${editId}`, { name: $("#edit-name").value }); loadStations(); });
+$("#edit-file").addEventListener("change", async (e) => {
+  const fd = new FormData(); fd.append("file", e.target.files[0]);
+  await api(`api/stations/${editId}/logo`, fd); e.target.value = ""; refreshEdit(); toast("Logo gespeichert");
+});
+$("#edit-refresh").addEventListener("click", async () => {
+  const r = await api(`api/stations/${editId}/logo/refresh`, {}); toast(r.found ? "Logo gefunden" : "Kein Logo gefunden"); refreshEdit();
+});
+$("#edit-reset").addEventListener("click", async () => { await api(`api/stations/${editId}/logo`, undefined, "DELETE"); refreshEdit(); });
+$("#edit-delete").addEventListener("click", async () => {
+  if (!confirm("Sender wirklich löschen?")) return;
+  await api(`api/stations/${editId}`, undefined, "DELETE"); $("#edit").close(); loadStations();
+});
+
+/* ------------------------------------------------------------------ controls */
+$("#btn-play").onclick = () => api(S && S.playing ? "api/stop" : "api/play", {});
+$("#btn-next").onclick = () => api("api/next", {});
+$("#btn-prev").onclick = () => api("api/previous", {});
+$("#btn-seek-up").onclick = () => api("api/seek", { direction: "up" });
+$("#btn-seek-down").onclick = () => api("api/seek", { direction: "down" });
+$("#btn-fav").onclick = () => S && S.station && api("api/favorites", { id: S.station.id, favorite: !S.station.favorite }).then(loadStations);
+$("#btn-mute").onclick = () => api("api/volume", { muted: !(S && S.muted) });
+$("#volume").addEventListener("input", (e) => { $("#volume-text").textContent = e.target.value; });
+$("#volume").addEventListener("change", (e) => api("api/volume", { volume: Number(e.target.value) }));
+$("#follow").addEventListener("change", (e) => api("api/settings", { auto_follow: e.target.checked }));
+$$("[data-scan]").forEach((b) => (b.onclick = () => api("api/scan", { band: b.dataset.scan })));
+$("#scan-cancel").onclick = () => api("api/scan/cancel", {});
+$$(".tabs button").forEach((b) => b.addEventListener("click", () => {
+  $$(".tabs button").forEach((x) => x.classList.toggle("active", x === b));
+  $$(".tab").forEach((t) => (t.hidden = t.id !== `tab-${b.dataset.tab}`));
+  if (b.dataset.tab === "stations") loadStations();
+}));
+
+connect();
+loadStations();

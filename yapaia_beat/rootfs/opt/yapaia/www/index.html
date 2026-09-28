@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Yapaia Beat</title>
+  <link rel="icon" href="static/logo.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="static/style.css?v={{VERSION}}">
+</head>
+<body>
+  <header class="top">
+    <img src="static/logo.svg" alt="" class="brand-logo">
+    <div class="brand">
+      <h1>Yapaia Beat</h1>
+      <span class="sub">FM &amp; DAB+ Radio</span>
+    </div>
+    <span id="conn" class="chip warn">verbinde …</span>
+  </header>
+
+  <main>
+    <section class="now card" id="now">
+      <div class="now-art">
+        <img id="now-logo" src="api/logo/current" alt="">
+        <img id="now-slide" alt="" hidden>
+      </div>
+      <div class="now-info">
+        <div class="now-state" id="now-state">Bereit</div>
+        <h2 id="now-name">Kein Sender</h2>
+        <div class="now-meta" id="now-meta"></div>
+        <div class="lcd">
+          <div class="lcd-text"><span id="now-text">Wähle einen Sender aus deinen Favoriten oder starte einen Suchlauf.</span></div>
+        </div>
+        <div class="now-song" id="now-song"></div>
+        <div class="signal-row">
+          <div class="bars" id="bars" title="Empfangsqualität"><i></i><i></i><i></i><i></i><i></i></div>
+          <span id="signal-text">–</span>
+          <span class="badge" id="stereo" hidden>STEREO</span>
+          <span class="badge" id="tp" hidden>TP</span>
+          <span class="follow-msg" id="follow-msg"></span>
+        </div>
+        <div class="controls">
+          <button class="icon" id="btn-prev" title="Vorheriger Favorit"><svg viewBox="0 0 24 24"><path d="M6 6h2v12H6zm3.5 6 8.5 6V6z"/></svg></button>
+          <button class="icon fm-only" id="btn-seek-down" title="FM −"><svg viewBox="0 0 24 24"><path d="M15.4 7.4 14 6l-6 6 6 6 1.4-1.4L10.8 12z"/></svg></button>
+          <button class="icon big" id="btn-play" title="Play/Stop"><svg viewBox="0 0 24 24" id="play-icon"><path d="M8 5v14l11-7z"/></svg></button>
+          <button class="icon fm-only" id="btn-seek-up" title="FM +"><svg viewBox="0 0 24 24"><path d="M10 6 8.6 7.4l4.6 4.6-4.6 4.6L10 18l6-6z"/></svg></button>
+          <button class="icon" id="btn-next" title="Nächster Favorit"><svg viewBox="0 0 24 24"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg></button>
+          <button class="icon" id="btn-fav" title="Favorit"><svg viewBox="0 0 24 24"><path id="fav-path" d="m12 17.3 6.2 3.7-1.6-7L22 9.2l-7.2-.6L12 2 9.2 8.6 2 9.2 7.5 14l-1.7 7z"/></svg></button>
+        </div>
+        <div class="vol-row">
+          <button class="icon small" id="btn-mute" title="Stumm"><svg viewBox="0 0 24 24"><path id="mute-path" d="M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0 0 14 8v8a4.5 4.5 0 0 0 2.5-4z"/></svg></button>
+          <input type="range" id="volume" min="0" max="100" value="60">
+          <span id="volume-text">60</span>
+          <label class="switch" title="Automatische Senderverfolgung bei schlechtem Empfang">
+            <input type="checkbox" id="follow"><span></span> Senderverfolgung
+          </label>
+        </div>
+      </div>
+    </section>
+
+    <nav class="tabs">
+      <button data-tab="favorites" class="active">Favoriten</button>
+      <button data-tab="stations">Sender</button>
+      <button data-tab="scan">Suchlauf</button>
+    </nav>
+
+    <section class="tab card" id="tab-favorites">
+      <div class="grid" id="fav-grid"></div>
+      <p class="empty" id="fav-empty">Noch keine Favoriten. Unter <b>Sender</b> mit dem ☆ markieren.</p>
+    </section>
+
+    <section class="tab card" id="tab-stations" hidden>
+      <div class="search-row">
+        <input type="search" id="search" placeholder="Suche nach Name oder Frequenz (z. B. SWR3 oder 98,3)">
+        <div class="seg" id="band-filter">
+          <button data-band="" class="active">Alle</button>
+          <button data-band="fm">FM</button>
+          <button data-band="dab">DAB+</button>
+        </div>
+      </div>
+      <div id="direct-tune" class="direct" hidden></div>
+      <ul class="list" id="station-list"></ul>
+      <p class="empty" id="stations-empty" hidden>Keine Sender gefunden. Starte einen Suchlauf.</p>
+    </section>
+
+    <section class="tab card" id="tab-scan" hidden>
+      <p>Der Suchlauf durchsucht das UKW-Band (87,5–108 MHz, inkl. RDS) und/oder DAB-Band III.
+         Während des Suchlaufs ist die Wiedergabe unterbrochen. Tipp für unterwegs: nach einem Ortswechsel
+         einfach erneut suchen – Favoriten bleiben erhalten und werden per PI-Code bzw. Service-ID zugeordnet.</p>
+      <div class="scan-buttons">
+        <button class="primary" data-scan="fm">FM-Suchlauf</button>
+        <button class="primary" data-scan="dab">DAB+-Suchlauf</button>
+        <button class="primary" data-scan="all">Beides</button>
+        <button id="scan-cancel" hidden>Abbrechen</button>
+      </div>
+      <div class="progress"><div id="scan-bar"></div></div>
+      <p id="scan-msg" class="muted"></p>
+      <p class="muted" id="stream-info"></p>
+    </section>
+  </main>
+
+  <dialog id="edit">
+    <form method="dialog">
+      <h3>Sender bearbeiten</h3>
+      <div class="edit-head">
+        <img id="edit-logo" alt="">
+        <div>
+          <label>Name<input id="edit-name"></label>
+          <div class="muted" id="edit-info"></div>
+        </div>
+      </div>
+      <div class="edit-actions">
+        <label class="button">Logo hochladen<input type="file" id="edit-file" accept="image/*" hidden></label>
+        <button type="button" id="edit-refresh">Logo online suchen</button>
+        <button type="button" id="edit-reset">Eigenes Logo entfernen</button>
+        <button type="button" id="edit-delete" class="danger">Sender löschen</button>
+      </div>
+      <div class="dialog-buttons">
+        <button value="cancel">Abbrechen</button>
+        <button value="save" class="primary" id="edit-save">Speichern</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div id="toast" hidden></div>
+  <footer>Yapaia Beat {{VERSION}}</footer>
+  <script src="static/app.js?v={{VERSION}}"></script>
+</body>
+</html>
