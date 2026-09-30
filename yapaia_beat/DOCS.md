@@ -299,3 +299,6 @@ Favoriten bleiben erhalten und werden automatisch zugeordnet.
 - [welle.io / welle-cli](https://github.com/AlbrechtL/welle.io) (GPL-2.0) für DAB/DAB+
 - [redsea](https://github.com/windytan/redsea) (MIT) für RDS
 - [rtl-sdr](https://osmocom.org/projects/rtl-sdr) (GPL-2.0), LAME, mpg123, PulseAudio-Tools
+
+Eine vollständige Liste aller verwendeten Projekte, Icons und Lizenzen steht in
+[CREDITS.md](https://github.com/apfelsafft/radio/blob/main/CREDITS.md).

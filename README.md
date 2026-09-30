@@ -101,8 +101,10 @@ tests/                          Unit-Tests (pytest)
 art/                            Logo (SVG/PNG)
 ```
 
-## Lizenz
+## Lizenz & Credits
 
-MIT. Verwendete Programme: [welle.io](https://github.com/AlbrechtL/welle.io)
-(GPL-2.0), [redsea](https://github.com/windytan/redsea) (MIT),
-[rtl-sdr](https://osmocom.org/projects/rtl-sdr) (GPL-2.0), LAME, mpg123.
+MIT (eigener Code dieses Repositories). Verwendete Programme, Icons, Vorlagen
+und ihre Lizenzen – u. a. [welle.io](https://github.com/AlbrechtL/welle.io),
+[redsea](https://github.com/windytan/redsea),
+[rtl-sdr](https://osmocom.org/projects/rtl-sdr) und die Google Material
+Icons – sind in [CREDITS.md](CREDITS.md) aufgeführt.
