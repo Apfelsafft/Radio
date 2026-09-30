@@ -16,14 +16,14 @@ def _mpx_fm(noise: float, seconds: float = 2.0) -> bytes:
     return (d / np.pi * 16384).astype("<i2").tobytes()
 
 
-def _decode(raw: bytes) -> tuple[FmStereoDecoder, np.ndarray]:
-    dec = FmStereoDecoder()
+def _decode(raw: bytes, dec: FmStereoDecoder | None = None) -> tuple[FmStereoDecoder, np.ndarray]:
+    dec = dec or FmStereoDecoder()
     out = b"".join(dec.process(raw[i : i + 19200]) for i in range(0, len(raw), 19200))
-    return dec, np.frombuffer(out, "<i2").reshape(-1, 2)[48000:] / 32767
+    return dec, np.frombuffer(out, "<i2").reshape(-1, 2)[-48000:] / 32767
 
 
 def test_stereo_separation_clean_signal():
-    dec, audio = _decode(_mpx_fm(0.0))
+    dec, audio = _decode(_mpx_fm(0.0, seconds=5))
     sep = 20 * np.log10(audio[:, 0].std() / audio[:, 1].std())
     assert dec.stereo
     assert sep > 30
@@ -31,7 +31,7 @@ def test_stereo_separation_clean_signal():
 
 
 def test_weak_signal_blends_to_mono_and_reports_low_quality():
-    dec, audio = _decode(_mpx_fm(0.2))
+    dec, audio = _decode(_mpx_fm(0.2, seconds=4))
     assert not dec.stereo
     assert abs(audio[:, 0].std() - audio[:, 1].std()) < 0.05
     assert dec.quality < 20
@@ -41,3 +41,17 @@ def test_output_rate_is_quarter_of_input():
     dec = FmStereoDecoder()
     out = dec.process(bytes(19200 * 2))  # 19200 samples
     assert len(out) == 19200 // 4 * 2 * 2
+
+
+def test_no_stereo_flicker_around_threshold():
+    """Signal hovering around ~17-19 dB must not toggle stereo/mono."""
+    dec = FmStereoDecoder()
+    toggles, last = 0, None
+    for noise in (0.03, 0.04, 0.035, 0.045, 0.03, 0.04, 0.035, 0.045):
+        raw = _mpx_fm(noise, seconds=1.5)
+        for i in range(0, len(raw), 19200):
+            dec.process(raw[i : i + 19200])
+            if last is not None and dec.stereo != last:
+                toggles += 1
+            last = dec.stereo
+    assert toggles <= 1

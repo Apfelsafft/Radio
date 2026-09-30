@@ -29,6 +29,7 @@ main { max-width: 980px; margin: 0 auto; padding: 0 16px 24px; }
 .card { background: linear-gradient(180deg, var(--card), var(--bg2)); border: 1px solid var(--line); border-radius: 18px; padding: 18px; }
 
 /* now playing */
+.now-info { min-width: 0; }
 .now { display: grid; grid-template-columns: 200px 1fr; gap: 22px; }
 .now-art { position: relative; }
 .now-art img { width: 200px; height: 200px; object-fit: contain; border-radius: 16px; background: #fff1; }
@@ -78,7 +79,19 @@ input[type=range] { accent-color: var(--accent); width: 200px; }
 .tabs button.active { background: var(--line); color: var(--text); }
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 14px; }
 .tile { background: var(--bg2); border: 2px solid transparent; border-radius: 16px; padding: 10px; text-align: center; cursor: pointer; position: relative; }
-.tile img { width: 100%; aspect-ratio: 1; object-fit: contain; border-radius: 12px; background: #fff1; }
+.tile img { width: var(--img, 100%); height: var(--img, auto); aspect-ratio: 1; object-fit: contain; border-radius: 12px; background: #fff1; }
+.tile { display: flex; flex-direction: column; align-items: center; justify-content: center; min-width: 0; }
+.tile .name, .tile .band { max-width: 100%; }
+.tile .band { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* favourites: pages that fit the screen, swipe or tap the dots */
+.pager { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; overscroll-behavior-x: contain; }
+.pager::-webkit-scrollbar { display: none; }
+.page { flex: 0 0 100%; display: grid; gap: 12px; scroll-snap-align: start; scroll-snap-stop: always; align-content: start; }
+.dots { display: flex; justify-content: center; gap: 8px; margin-top: 12px; min-height: 10px; }
+.dots button { width: 10px; height: 10px; padding: 0; border-radius: 50%; background: var(--line); }
+.dots button.active { background: var(--accent); width: 24px; border-radius: 5px; }
+.tile.pending { border-color: var(--accent2); animation: pulse 1s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: .6; } }
 .tile .name { margin-top: 6px; font-weight: 600; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tile .band { color: var(--muted); font-size: 11px; }
 .tile.playing { border-color: var(--accent); }
@@ -131,3 +144,28 @@ footer { text-align: center; color: var(--muted); font-size: 12px; padding: 16px
 .out-row { display: flex; align-items: center; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
 .out-row .seg button:disabled { opacity: .4; cursor: not-allowed; }
 .small { font-size: 12px; }
+
+/* Landscape screens with little height (car radio 1024×600, iPad in the HA
+   frame): player left, favourites/stations right – everything visible. */
+@media (min-width: 880px) and (max-height: 820px) and (orientation: landscape) {
+  .top { padding: 8px 16px; }
+  .brand-logo { width: 36px; height: 36px; }
+  .brand h1 { font-size: 18px; }
+  .brand .sub, footer { display: none; }
+  main { max-width: none; display: grid; grid-template-columns: minmax(360px, 44%) 1fr; grid-template-rows: auto 1fr; column-gap: 16px; align-items: start; }
+  .now-info { min-width: 0; }
+  .out-row .seg button { padding: 6px 9px; white-space: nowrap; font-size: 13px; }
+  .now { grid-column: 1; grid-row: 1 / span 2; grid-template-columns: 110px 1fr; gap: 14px; padding: 14px; }
+  .now-art { display: block; }
+  .now-art img { width: 110px; height: 110px; }
+  #now-slide { max-height: 110px; }
+  .now-info h2 { font-size: 22px; }
+  .lcd { margin: 8px 0 4px; }
+  .controls { flex-wrap: wrap; gap: 6px; }
+  button.icon { width: 40px; height: 40px; }
+  button.icon.big { width: 52px; height: 52px; }
+  .out-row, .vol-row { margin-top: 8px; gap: 8px; }
+  .switch { margin-left: 0; }
+  .tabs { grid-column: 2; margin: 0 0 10px; }
+  .tab { grid-column: 2; padding: 12px; }
+}

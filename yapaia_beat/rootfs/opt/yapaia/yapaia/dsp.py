@@ -27,6 +27,8 @@ MPX_RATE = 192_000
 AUDIO_RATE = 48_000
 DECIM = MPX_RATE // AUDIO_RATE
 MAX_DEVIATION = 75_000.0
+STEREO_ON = 20.0  # dB "pilot SNR" to switch to stereo (held 2 s)
+STEREO_OFF = 13.0  # dB below which we fall back to mono
 
 
 class FmStereoDecoder:
@@ -62,6 +64,9 @@ class FmStereoDecoder:
         self._phase = 0  # decimation phase
         self._pending = np.zeros(0, dtype=np.float64)
         self._first = True
+        self._first_snr = True
+        self._stereo_mode = False
+        self._stereo_good = 0.0
 
         # public measurements
         self.pilot_level = 0.0  # relative to nominal 9 % pilot injection
@@ -100,7 +105,11 @@ class FmStereoDecoder:
         # Noise above the MPX band is independent from programme content and
         # rises quickly when the RF signal gets weak.  Expressed relative to
         # the nominal pilot level so the number is roughly a "pilot SNR".
-        self.snr_db = 20 * math.log10(0.09 / self.noise_rms)
+        snr_now = 20 * math.log10(0.09 / self.noise_rms)
+        # slow average (~1 s) for decisions and display – the raw value jumps
+        # around a lot with multipath/fading
+        self.snr_db = snr_now if self._first_snr else 0.95 * self.snr_db + 0.05 * snr_now
+        self._first_snr = False
 
         amp = float(np.sqrt(2 * np.mean(carrier * carrier)))
         self._carrier_amp = 0.7 * self._carrier_amp + 0.3 * max(amp, 1e-9)
@@ -109,12 +118,25 @@ class FmStereoDecoder:
         diff, self._zi_diff = signal.lfilter(self._lp, 1.0, 2.0 * x * carrier, zi=self._zi_diff)
 
         pilot_ok = self.pilot_level > 0.35 and not self.force_mono
+        # Stereo decision with hysteresis: on above STEREO_ON dB for 2 s,
+        # off below STEREO_OFF dB (or without pilot).  Prevents flickering
+        # when the signal hovers around a single threshold.
+        chunk_s = x.size / MPX_RATE
+        if not pilot_ok or self.snr_db < STEREO_OFF:
+            self._stereo_mode = False
+            self._stereo_good = 0.0
+        elif self.snr_db > STEREO_ON:
+            self._stereo_good += chunk_s
+            if self._stereo_good >= 2.0:
+                self._stereo_mode = True
+        else:
+            self._stereo_good = 0.0
         target = 0.0
-        if pilot_ok:
-            # blend to mono on weak signals to suppress stereo noise
-            target = min(1.0, max(0.0, (self.snr_db - 12.0) / 12.0))
-        self._blend = 0.8 * self._blend + 0.2 * target
-        self.stereo = self._blend > 0.5
+        if self._stereo_mode:
+            # soft blend towards mono while the signal gets weaker
+            target = min(1.0, max(0.3, (self.snr_db - STEREO_OFF) / (STEREO_ON + 6 - STEREO_OFF)))
+        self._blend = 0.9 * self._blend + 0.1 * target  # ~0.5 s transitions
+        self.stereo = self._stereo_mode
 
         diff *= self._blend
         left = (mono + diff)[self._phase :: DECIM]

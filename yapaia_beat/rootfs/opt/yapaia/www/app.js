@@ -122,19 +122,70 @@ function render(s) {
   else markPlaying();
 }
 
+/* Favourites are split into pages that fit the free space below the player
+ * (no page scrolling); swipe horizontally or tap the dots to switch pages. */
+let favPage = 0;
+function favLayout() {
+  const box = $("#fav-grid");
+  const width = box.clientWidth || 600;
+  const top = box.getBoundingClientRect().top + window.scrollY;
+  const avail = Math.max(170, window.innerHeight - top - 56); // leave room for dots
+  const gap = 12;
+  const minTile = width < 500 ? 104 : 132;
+  const cols = Math.max(1, Math.floor((width + gap) / (minTile + gap)));
+  const colW = (width - gap * (cols - 1)) / cols;
+  const text = 58; // name + band + padding
+  const rows = Math.max(1, Math.floor((avail + gap) / (Math.min(colW, 150) + text + gap)));
+  const rowH = (avail - gap * (rows - 1)) / rows;
+  const img = Math.max(56, Math.min(colW - 24, rowH - text, 150));
+  return { cols, rows, img, per: cols * rows };
+}
+
 function renderFavorites() {
-  const grid = $("#fav-grid");
+  const box = $("#fav-grid");
   const favs = S.favorites;
   $("#fav-empty").hidden = favs.length > 0;
-  grid.innerHTML = favs.map((f, i) => `
-    <div class="tile ${S.active_favorite === f.id ? "playing" : ""}" data-id="${esc(f.id)}">
-      ${i > 0 ? `<button class="move l" data-move="-1" title="nach vorne">‹</button>` : ""}
-      ${i < favs.length - 1 ? `<button class="move r" data-move="1" title="nach hinten">›</button>` : ""}
-      <img src="${esc(f.logo_url)}" alt="" loading="lazy">
-      <div class="name">${esc(f.name)}</div>
-      <div class="band">${esc(sub(f))}</div>
+  if (!favs.length) { box.innerHTML = ""; $("#fav-dots").innerHTML = ""; return; }
+  const L = favLayout();
+  const pages = [];
+  for (let i = 0; i < favs.length; i += L.per) pages.push(favs.slice(i, i + L.per));
+  favPage = Math.min(favPage, pages.length - 1);
+  box.innerHTML = pages.map((page, p) => `
+    <div class="page" style="grid-template-columns: repeat(${L.cols}, 1fr); --img: ${L.img}px">
+      ${page.map((f, j) => {
+        const i = p * L.per + j;
+        return `
+        <div class="tile ${S.active_favorite === f.id ? "playing" : ""}" data-id="${esc(f.id)}">
+          ${i > 0 ? `<button class="move l" data-move="-1" title="nach vorne">‹</button>` : ""}
+          ${i < favs.length - 1 ? `<button class="move r" data-move="1" title="nach hinten">›</button>` : ""}
+          <img src="${esc(f.logo_url)}" alt="" loading="lazy" onerror="this.onerror=null;this.src='api/logo/${esc(f.id)}?placeholder=1'">
+          <div class="name">${esc(f.name)}</div>
+          <div class="band">${esc(sub(f))}</div>
+        </div>`;
+      }).join("")}
     </div>`).join("");
+  $("#fav-dots").innerHTML = pages.length > 1
+    ? pages.map((_, p) => `<button data-page="${p}" class="${p === favPage ? "active" : ""}" aria-label="Seite ${p + 1}"></button>`).join("")
+    : "";
+  box.scrollLeft = favPage * box.clientWidth;
 }
+
+$("#fav-grid").addEventListener("scroll", () => {
+  const box = $("#fav-grid");
+  const p = Math.round(box.scrollLeft / Math.max(1, box.clientWidth));
+  if (p !== favPage) {
+    favPage = p;
+    $$("#fav-dots button").forEach((d, i) => d.classList.toggle("active", i === p));
+  }
+}, { passive: true });
+$("#fav-dots").addEventListener("click", (e) => {
+  const d = e.target.closest("[data-page]");
+  if (!d) return;
+  favPage = Number(d.dataset.page);
+  $("#fav-grid").scrollTo({ left: favPage * $("#fav-grid").clientWidth, behavior: "smooth" });
+});
+let resizeTimer;
+window.addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(() => S && renderFavorites(), 150); });
 
 $("#fav-grid").addEventListener("click", async (e) => {
   const tile = e.target.closest(".tile");
@@ -148,7 +199,9 @@ $("#fav-grid").addEventListener("click", async (e) => {
     await api("api/favorites", { order: ids });
     return;
   }
-  await api("api/play", { id: tile.dataset.id });
+  // immediate feedback while the receiver retunes
+  $$("#fav-grid .tile").forEach((t) => t.classList.toggle("pending", t === tile));
+  try { await api("api/play", { id: tile.dataset.id }); } finally { tile.classList.remove("pending"); }
 });
 
 /* ------------------------------------------------------------------ stations list */
@@ -248,6 +301,7 @@ $$(".tabs button").forEach((b) => b.addEventListener("click", () => {
   $$(".tabs button").forEach((x) => x.classList.toggle("active", x === b));
   $$(".tab").forEach((t) => (t.hidden = t.id !== `tab-${b.dataset.tab}`));
   if (b.dataset.tab === "stations") loadStations();
+  if (b.dataset.tab === "favorites" && S) renderFavorites();
 }));
 
 /* ------------------------------------------------------------------ browser playback

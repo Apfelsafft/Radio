@@ -51,6 +51,8 @@ class Radio:
         self._logo_task: asyncio.Task | None = None
         self._bad_since: float | None = None
         self._follow_block_until = 0.0
+        self._follow_fails = 0
+        self._follow_task: asyncio.Task | None = None
         self._last_json = ""
         self._slide: tuple[int, bytes, str] | None = None
         self._recover_at = 0.0
@@ -70,7 +72,7 @@ class Radio:
                     await self.tune_fm(float(last))
 
     async def shutdown(self) -> None:
-        for task in (self._monitor_task, self._scan_task, self._logo_task):
+        for task in (self._monitor_task, self._scan_task, self._logo_task, self._follow_task):
             if task:
                 task.cancel()
         await self._stop_tuner()
@@ -109,6 +111,10 @@ class Radio:
         self.tuner = tuner
 
     async def _start_dab(self, channel: str, sid: str) -> None:
+        cur = self.tuner
+        if isinstance(cur, DabTuner) and cur.running and cur.channel == channel and cur.has_service(sid):
+            await cur.set_service(sid)  # same ensemble: keep the receiver running
+            return
         await self._stop_tuner()
         tuner = DabTuner(self.opts, channel, sid, on_pcm=self.audio.write)
         await tuner.start()
@@ -121,6 +127,7 @@ class Radio:
     # ------------------------------------------------------------------ public actions
     async def play(self, station_id: str) -> None:
         self._busy()
+        await self._cancel_follow()
         station = self.store.get(station_id)
         if station is None:
             raise KeyError(station_id)
@@ -141,6 +148,7 @@ class Radio:
     async def tune_fm(self, freq: float) -> None:
         """Tune to an arbitrary FM frequency (manual tuning)."""
         self._busy()
+        await self._cancel_follow()
         freq = round(float(freq), 2)
         if not FM_START - 0.001 <= freq <= FM_STOP + 0.001:
             raise ValueError("Frequenz muss zwischen 87,5 und 108 MHz liegen")
@@ -171,6 +179,7 @@ class Radio:
 
     async def stop(self) -> None:
         self._recover_error = None
+        await self._cancel_follow()
         if self.scan["running"]:
             self.cancel_scan()
             return
@@ -256,10 +265,21 @@ class Radio:
         self._scan_cancel.clear()
         self._scan_task = asyncio.create_task(self._run_scan(band))
 
+    async def _cancel_follow(self) -> None:
+        """A user action always wins over a running station-following search
+        (which may take half a minute)."""
+        task = self._follow_task
+        if task and not task.done():
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+            self.follow["active"] = False
+            _LOGGER.info("Station following interrupted by user action")
+
     def cancel_scan(self) -> None:
         self._scan_cancel.set()
 
     async def _run_scan(self, band: str) -> None:
+        await self._cancel_follow()
         resume = self.station["id"] if self.station and self.state in ("playing", "following") else None
         self.scan = {"running": True, "band": band, "progress": 0, "message": "Starte Suchlauf …", "found": 0, "error": None}
         async with self._lock:
@@ -416,6 +436,9 @@ class Radio:
     def _reset_follow(self) -> None:
         self._bad_since = None
         self.follow["active"] = False
+        self.follow["message"] = None
+        self._follow_fails = 0
+        self._follow_block_until = 0.0
 
     async def _check_follow(self) -> None:
         tuner, st = self.tuner, self.station
@@ -433,7 +456,10 @@ class Radio:
             return
         if now - self._bad_since < max(3, self.opts.follow_delay_s) or now < self._follow_block_until:
             return
-        await self._follow(tuner, st)
+        if self._follow_task and not self._follow_task.done():
+            return
+        # separate task, so user actions can interrupt the search right away
+        self._follow_task = asyncio.create_task(self._follow(tuner, st))
 
     async def _follow(self, tuner: Tuner, st: dict[str, Any]) -> None:
         cur_q = tuner.quality
@@ -467,6 +493,7 @@ class Radio:
                 _LOGGER.info(msg)
                 self.follow.update(message=msg, last_switch=time.time())
                 self._follow_block_until = time.monotonic() + 30
+                self._follow_fails = 0
             else:
                 band, freq, channel = original
                 if band == "fm":
@@ -474,7 +501,9 @@ class Radio:
                 else:
                     await self._start_dab(channel, st["sid"])
                 self.follow["message"] = "Kein besserer Empfang gefunden"
-                self._follow_block_until = time.monotonic() + 120
+                # every search interrupts the audio – back off 2, 4, 8 … 30 min
+                self._follow_block_until = time.monotonic() + min(120 * 2**self._follow_fails, 1800)
+                self._follow_fails += 1
             self.state = "playing"
             self.follow["active"] = False
             self._bad_since = None
@@ -537,7 +566,7 @@ class Radio:
                 for other in partners("dab"):
                     if res := await try_dab(other, [c["channel"] for c in other.get("channels", [])]):
                         return res
-            if self.opts.follow_full_search and code:
+            if self.opts.follow_full_search and code and cur_q < 20:
                 self.follow["message"] = f"Durchsuche FM-Band nach {display_name(st)} …"
                 self.changed()
                 spectrum = await rtl_power_sweep(self.opts, FM_START - 0.2, FM_STOP + 0.2, 10, seconds=1)
@@ -555,7 +584,7 @@ class Radio:
                     freqs = [x["freq"] for x in other.get("freqs", [])]
                     if res := await try_fm(other, freqs, _hex(other.get("pi"))):
                         return res
-            if self.opts.follow_full_search:
+            if self.opts.follow_full_search and cur_q < 20:
                 self.follow["message"] = f"Durchsuche DAB-Band nach {display_name(st)} …"
                 self.changed()
                 chans = [c for c in await dab_candidates(self.opts) if c != cur and c not in channels]
