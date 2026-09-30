@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.2.0
+
+- Favoriten passen sich dem freien Platz an: Seiten statt Scrollen, wischen
+  oder Punkte antippen; Zwei-Spalten-Layout für flache Querformat-Bildschirme
+  (Autoradio 1024×600)
+- Schnelleres Umschalten: eine Bedienung bricht eine laufende
+  Senderverfolgungs-Suche sofort ab; Wechsel innerhalb desselben
+  DAB-Ensembles ohne Neustart des Empfängers; sofortige Rückmeldung beim Tippen
+- Senderverfolgung stört weniger: nach erfolgloser Suche wartet sie
+  zunehmend länger (2, 4, 8 … 30 min), die Bandsuche läuft nur noch bei sehr
+  schlechtem Empfang
+- Stereo/Mono ohne Flackern: Hysterese (Stereo ab 20 dB für 2 s, Mono unter
+  13 dB) und ruhigere Signalmessung
+- Ersatzlogo, wenn ein gespeichertes Logo nicht geladen werden kann
+
 ## 1.1.1
 
 - Automatische Wiederherstellung, wenn der RTL-SDR Stick verschwindet oder

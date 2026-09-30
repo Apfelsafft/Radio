@@ -114,8 +114,29 @@ class DabTuner:
         self.running = True
         self.started = time.monotonic()
         self._tasks = [asyncio.create_task(self._read_stderr()), asyncio.create_task(self._poll())]
+        self._audio_task: asyncio.Task | None = None
         if self.sid and self.on_pcm:
-            self._tasks.append(asyncio.create_task(self._audio()))
+            self._audio_task = asyncio.create_task(self._audio())
+            self._tasks.append(self._audio_task)
+
+    async def set_service(self, sid: str) -> None:
+        """Switch to another service of the same ensemble without restarting
+        welle-cli (no re-sync of the receiver → switching takes ~1 s)."""
+        if self._audio_task:
+            self._audio_task.cancel()
+            await asyncio.gather(self._audio_task, return_exceptions=True)
+            if self._audio_task in self._tasks:
+                self._tasks.remove(self._audio_task)
+        await kill(self._decoder)
+        self.sid = norm_sid(sid)
+        self._last_audio = 0.0
+        self._slide_change = None
+        self.slide_version = 0
+        self._audio_task = asyncio.create_task(self._audio())
+        self._tasks.append(self._audio_task)
+
+    def has_service(self, sid: str) -> bool:
+        return any(norm_sid(s.get("sid")) == norm_sid(sid) for s in self.services)
 
     async def stop(self) -> None:
         self.running = False

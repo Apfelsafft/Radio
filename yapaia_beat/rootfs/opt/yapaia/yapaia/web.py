@@ -238,7 +238,7 @@ async def logo(request: web.Request) -> web.StreamResponse:
         if not radio.station:
             return web.Response(body=radio.logos.placeholder(None), content_type="image/svg+xml")
         sid = radio.station["id"]
-    path = radio.logos.path(sid)
+    path = None if request.query.get("placeholder") else radio.logos.path(sid)
     headers = {"Cache-Control": "public, max-age=3600"}
     if path:
         return web.FileResponse(path, headers={**headers, "Content-Type": radio.logos.content_type(path)})
