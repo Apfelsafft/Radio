@@ -142,7 +142,24 @@ footer { text-align: center; color: var(--muted); font-size: 12px; padding: 16px
 }
 
 .out-row { display: flex; align-items: center; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
-.out-row .seg button:disabled { opacity: .4; cursor: not-allowed; }
+.out-pick { position: relative; }
+.out-btn { display: flex; align-items: center; gap: 8px; background: var(--bg); border: 1px solid var(--line); padding: 7px 12px; border-radius: 10px; max-width: 320px; }
+.out-btn #out-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.out-btn .caret { color: var(--muted); font-size: 12px; }
+.out-btn.casting { border-color: var(--ok); color: var(--ok); }
+.out-menu { position: absolute; z-index: 20; top: calc(100% + 6px); left: 0; min-width: 260px; max-width: min(360px, 90vw); max-height: 60vh; overflow-y: auto;
+            background: var(--bg2); border: 1px solid var(--line); border-radius: 12px; padding: 6px; box-shadow: 0 10px 30px #000a; }
+.out-menu .grp { color: var(--muted); font-size: 11px; letter-spacing: 1px; text-transform: uppercase; padding: 8px 10px 4px; }
+.out-menu button { display: flex; width: 100%; align-items: center; gap: 10px; text-align: left; background: transparent; padding: 9px 10px; border-radius: 8px; }
+.out-menu button:hover:not(:disabled) { background: var(--line); }
+.out-menu button:disabled { opacity: .4; cursor: not-allowed; }
+.out-menu button.active { color: var(--ok); }
+.out-menu button .ico { width: 22px; text-align: center; }
+.out-menu button .lbl { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.out-menu button small { color: var(--muted); font-size: 11px; }
+.out-menu button.active::after { content: "✓"; }
+.out-menu .none { color: var(--muted); font-size: 12px; padding: 6px 10px 8px; }
+#out-hint.err { color: #ff8a80; }
 .small { font-size: 12px; }
 
 /* Landscape screens with little height (car radio 1024×600, iPad in the HA
@@ -154,7 +171,7 @@ footer { text-align: center; color: var(--muted); font-size: 12px; padding: 16px
   .brand .sub, footer { display: none; }
   main { max-width: none; display: grid; grid-template-columns: minmax(360px, 44%) 1fr; grid-template-rows: auto 1fr; column-gap: 16px; align-items: start; }
   .now-info { min-width: 0; }
-  .out-row .seg button { padding: 6px 9px; white-space: nowrap; font-size: 13px; }
+  .out-btn { padding: 6px 10px; font-size: 13px; }
   .now { grid-column: 1; grid-row: 1 / span 2; grid-template-columns: 110px 1fr; gap: 14px; padding: 14px; }
   .now-art { display: block; }
   .now-art img { width: 110px; height: 110px; }

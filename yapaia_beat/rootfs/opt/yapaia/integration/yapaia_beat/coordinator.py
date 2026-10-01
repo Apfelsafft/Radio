@@ -35,6 +35,7 @@ class YapaiaCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.base = f"http://{entry.data[CONF_HOST]}:{entry.data.get(CONF_PORT, 8099)}"
         self.session = async_get_clientsession(hass)
         self._ws_task: asyncio.Task | None = None
+        self.speaker: Any = None  # SpeakerSync, set up in __init__
 
     # ------------------------------------------------------------------
     async def _async_update_data(self) -> dict[str, Any]:

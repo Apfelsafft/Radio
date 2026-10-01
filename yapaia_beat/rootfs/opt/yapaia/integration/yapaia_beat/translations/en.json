@@ -31,6 +31,9 @@
     "select": {
       "favorite": {
         "name": "Favorite"
+      },
+      "output": {
+        "name": "Output"
       }
     },
     "sensor": {
@@ -145,6 +148,16 @@
         "favorite": {
           "name": "Favorite",
           "description": "Add or remove."
+        }
+      }
+    },
+    "set_output": {
+      "name": "Choose output",
+      "description": "Where the radio plays: local (host speakers), none (browsers only) or a media player.",
+      "fields": {
+        "output": {
+          "name": "Output",
+          "description": "local, none or the entity id of a media player (e.g. media_player.living_room)."
         }
       }
     }

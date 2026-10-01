@@ -36,3 +36,10 @@ set_favorite:
       default: true
       selector:
         boolean:
+set_output:
+  fields:
+    output:
+      required: true
+      example: "media_player.wohnzimmer"
+      selector:
+        text:

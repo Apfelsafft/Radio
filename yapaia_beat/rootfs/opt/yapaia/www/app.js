@@ -355,36 +355,95 @@ const player = {
   get playing() { return !!(this.audio && !this.audio.paused && this.audio.src); },
 };
 
-function browserOnly() { return player.wanted && !(S && S.local_output && S.local_audio); }
+function browserOnly() { return player.wanted && !(S && (S.speaker || (S.local_output && S.local_audio))); }
+
+/* Output picker (like "Connect to a device" in Spotify): Mini-PC speakers,
+ * this browser, both – or any media player Home Assistant knows (Sonos,
+ * Chromecast, Music Assistant …); the integration sends the stream there. */
+function outputMode() {
+  if (!S) return "local";
+  if (S.speaker) return "speaker:" + S.speaker;
+  const local = S.local_audio && S.local_output;
+  return local && player.wanted ? "both" : player.wanted ? "browser" : local ? "local" : "none";
+}
+
+function speakerName(id) {
+  const p = (S.players || []).find((x) => x.entity_id === id);
+  return p ? p.name : id;
+}
 
 function renderOutput() {
   if (!S) return;
-  const local = S.local_audio && S.local_output;
-  const mode = local && player.wanted ? "both" : player.wanted ? "browser" : "local";
-  $$("#output button").forEach((b) => {
-    b.classList.toggle("active", b.dataset.out === mode);
-    if (b.dataset.out !== "browser") b.disabled = !S.local_audio;
-  });
+  const mode = outputMode();
+  const labels = {
+    local: ["🖥", "Mini-PC"], browser: ["📱", "Dieses Gerät"], both: ["🖥", "Mini-PC + dieses Gerät"], none: ["🔇", "Keine Ausgabe"],
+  };
+  const [icon, label] = mode.startsWith("speaker:") ? ["🔊", speakerName(S.speaker) + (player.wanted ? " + dieses Gerät" : "")] : labels[mode];
+  $("#out-icon").textContent = icon;
+  $("#out-label").textContent = label;
+  $("#out-btn").classList.toggle("casting", !!S.speaker && !S.speaker_error);
+  if (!$("#out-menu").hidden) renderOutMenu();
   $("#browser-unlock").hidden = !(player.wanted && player.blocked);
-  let hint = "";
-  if (!S.local_audio) hint = "Mini-PC-Ausgabe nicht verfügbar (Audio im Add-on prüfen)";
+  let hint = "", err = false;
+  if (S.speaker_error) { hint = "⚠ " + S.speaker_error; err = true; }
+  else if (player.wanted && player.blocked) hint = "Der Browser startet den Ton erst nach einem Tippen – einfach irgendwo tippen";
+  else if (!S.local_audio && mode === "none") hint = "Mini-PC-Ausgabe nicht verfügbar (Audio im Add-on prüfen)";
   else if (player.wanted && IS_IOS) hint = "Lautstärke am iPad/iPhone mit den Tasten regeln";
   else if (player.wanted) hint = "Wiedergabe ca. 2–4 s verzögert";
   $("#out-hint").textContent = hint;
+  $("#out-hint").classList.toggle("err", err);
   const vol = browserOnly() ? player.volume : S.volume;
   if (document.activeElement !== $("#volume")) $("#volume").value = vol;
   $("#volume-text").textContent = !browserOnly() && S.muted ? "stumm" : vol;
 }
 
-$$("#output button").forEach((b) => b.addEventListener("click", () => {
-  let out = b.dataset.out;
-  // without host speakers "this device" simply toggles
-  if (S && !S.local_audio && out === "browser" && player.wanted) out = "local";
-  player.setWanted(out !== "local"); // play() runs inside the click (needed on iOS)
-  if (S && S.local_audio) api("api/settings", { local_output: out !== "browser" });
+function renderOutMenu() {
+  const mode = outputMode();
+  const item = (value, icon, label, opts = {}) => `
+    <button role="option" data-out="${esc(value)}" class="${mode === value ? "active" : ""}" ${opts.disabled ? "disabled" : ""}>
+      <span class="ico">${icon}</span><span class="lbl">${esc(label)}${opts.small ? `<br><small>${esc(opts.small)}</small>` : ""}</span>
+    </button>`;
+  const noLocal = !S.local_audio;
+  const players = S.players || [];
+  $("#out-menu").innerHTML = `
+    <div class="grp">Hier &amp; am Mini-PC</div>
+    ${item("browser", "📱", "Dieses Gerät", { small: "Browser, iPad, Autoradio …" })}
+    ${item("local", "🖥", "Mini-PC", { disabled: noLocal, small: noLocal ? "Audio im Add-on nicht verfügbar" : "Lautsprecher am Home-Assistant-Rechner" })}
+    ${item("both", "🖥", "Mini-PC + dieses Gerät", { disabled: noLocal })}
+    <div class="grp">Home Assistant Lautsprecher</div>
+    ${players.length
+      ? players.map((p) => item("speaker:" + p.entity_id, "🔊", p.name, { small: p.entity_id })).join("")
+      : `<div class="none">Keine weiteren Media Player gefunden. Sie erscheinen hier, sobald die Yapaia-Beat-Integration in Home Assistant eingerichtet ist.</div>`}
+    ${S.local_audio ? "" : item("none", "🔇", "Keine Ausgabe")}`;
+}
+
+$("#out-btn").addEventListener("click", (e) => {
+  e.stopPropagation();
+  const menu = $("#out-menu");
+  menu.hidden = !menu.hidden;
+  if (!menu.hidden) renderOutMenu();
+});
+document.addEventListener("click", (e) => {
+  if (!e.target.closest(".out-pick")) $("#out-menu").hidden = true;
+});
+$("#out-menu").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-out]");
+  if (!b || b.disabled) return;
+  const out = b.dataset.out;
+  const speaker = out.startsWith("speaker:") ? out.slice(8) : null;
+  // the browser starts playing right here, inside the tap (needed on iOS)
+  player.setWanted(out === "browser" || out === "both");
+  api("api/settings", { local_output: out === "local" || out === "both", speaker });
+  $("#out-menu").hidden = true;
   renderOutput();
-}));
+});
 $("#browser-unlock").onclick = () => player.start();
+
+/* Browsers only allow sound after the user touched the page.  When the
+ * page was opened with "this device" selected, the first tap anywhere
+ * starts the sound – no extra button needed. */
+const unlock = () => { if (player.wanted && player.blocked) player.start(); };
+["click", "touchend", "keydown"].forEach((ev) => document.addEventListener(ev, unlock, { capture: true, passive: true }));
 
 /* lock screen / car display: station, logo and buttons via the Media Session API */
 function updateMediaSession() {
@@ -411,7 +470,7 @@ if ("mediaSession" in navigator) {
   safe(() => ms.setActionHandler("previoustrack", () => api("api/previous", {})));
 }
 
-if (player.wanted) player.start(); // may be blocked until the first tap → button
+if (player.wanted) player.start(); // may be blocked until the first tap anywhere
 
 connect();
 loadStations();

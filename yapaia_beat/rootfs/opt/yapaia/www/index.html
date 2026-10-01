@@ -48,12 +48,13 @@
         </div>
         <div class="out-row">
           <span class="muted">Ausgabe</span>
-          <div class="seg" id="output">
-            <button data-out="local" title="Lautsprecher am Home-Assistant-Rechner">🖥 Mini-PC</button>
-            <button data-out="browser" title="Auf diesem Gerät im Browser abspielen">📱 Dieses Gerät</button>
-            <button data-out="both" title="Mini-PC und dieses Gerät">Beide</button>
+          <div class="out-pick">
+            <button id="out-btn" class="out-btn" aria-haspopup="listbox" title="Wo soll das Radio zu hören sein?">
+              <span id="out-icon">🖥</span><span id="out-label">Mini-PC</span><span class="caret">▾</span>
+            </button>
+            <div id="out-menu" class="out-menu" role="listbox" hidden></div>
           </div>
-          <button class="primary" id="browser-unlock" hidden>▶ Ton hier aktivieren</button>
+          <button class="primary" id="browser-unlock" hidden>▶ Ton hier starten</button>
           <span class="muted small" id="out-hint"></span>
         </div>
         <div class="vol-row">

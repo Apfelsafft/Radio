@@ -43,6 +43,11 @@ class Radio:
         self.auto_follow = bool(store.settings.get("auto_follow", opts.auto_follow))
         audio.volume = int(store.settings.get("volume", opts.default_volume))
         audio.local_enabled = bool(store.settings.get("local_output", True))
+        # other Home Assistant media players (reported by the integration) and
+        # the one the radio is sent to ("speaker"); the integration does the casting
+        self.players: list[dict[str, Any]] = []
+        self.speaker: str | None = store.settings.get("speaker")
+        self.speaker_error: str | None = None
         self._listeners: set[asyncio.Queue[str]] = set()
         self._lock = asyncio.Lock()
         self._scan_cancel = asyncio.Event()
@@ -232,6 +237,28 @@ class Radio:
         self.store.save()
         if enabled:
             self.wake()
+        self.changed()
+
+    def set_speaker(self, entity_id: str | None) -> None:
+        """Send the radio to a Home Assistant media player (None = none)."""
+        self.speaker = str(entity_id) if entity_id else None
+        self.speaker_error = None
+        self.store.settings["speaker"] = self.speaker
+        self.store.save()
+        if self.speaker:
+            self.wake()
+        self.changed()
+
+    def set_players(self, players: list[dict[str, Any]]) -> None:
+        self.players = [
+            {"entity_id": str(p["entity_id"]), "name": str(p.get("name") or p["entity_id"])}
+            for p in players
+            if isinstance(p, dict) and p.get("entity_id")
+        ]
+        self.changed()
+
+    def set_speaker_error(self, error: str | None) -> None:
+        self.speaker_error = str(error) if error else None
         self.changed()
 
     # ------------------------------------------------------------------ standby
@@ -720,6 +747,9 @@ class Radio:
             "local_audio": self.audio.local,
             "local_output": self.audio.local_enabled,
             "stream_clients": self.audio.client_count,
+            "speaker": self.speaker,
+            "speaker_error": self.speaker_error,
+            "players": self.players,
             "auto_follow": self.auto_follow,
             "standby_minutes": self.opts.standby_minutes,
             "follow": dict(self.follow),

@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.4.0
+
+- Ausgabe-Auswahl wie bei Spotify: Dieses Gerät, Mini-PC, beides – oder jeder
+  Media Player in Home Assistant (Sonos, Chromecast, Music Assistant, DLNA …).
+  Die Integration startet/stoppt den Stream auf dem Lautsprecher mit dem
+  Radio und gleicht die Lautstärke ab
+- Neu: `select.yapaia_beat_output` und Aktion `yapaia_beat.set_output`
+- Ton im Browser startet ohne „Ton hier aktivieren": sofort beim Umschalten,
+  nach einem Neuladen beim ersten Tippen irgendwo auf der Seite
+
 ## 1.3.0
 
 - Standby: hört niemand zu (Mini-PC-Lautsprecher aus, kein Browser/Player am
