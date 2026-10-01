@@ -7,10 +7,10 @@
  *   style: retro | modern                            # optional, default retro
  *   max_presets: 12                                  # optional, 0 hides presets
  *   show_slide: true                                 # optional, DAB+ slideshow
- *   show_output: true                                # optional, Mini-PC / this device buttons
+ *   show_output: true                                # optional, output picker (Mini-PC / this device / HA speakers)
  */
 
-const CARD_VERSION = "1.3.0";
+const CARD_VERSION = "1.4.0";
 
 const ICONS = {
   speaker: "M17 2H7a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2zm-5 2a2 2 0 1 1 0 4 2 2 0 0 1 0-4zm0 16a4 4 0 1 1 0-8 4 4 0 0 1 0 8zm0-6a2 2 0 1 0 0 4 2 2 0 0 0 0-4z",
@@ -131,6 +131,14 @@ const BrowserPlayer = {
 };
 window.YapaiaBeatPlayer = BrowserPlayer;
 
+// Browsers only allow sound after a tap: if "this device" was chosen
+// earlier, the first tap anywhere on the dashboard starts it.
+if (!window.__yapaiaUnlock) {
+  window.__yapaiaUnlock = true;
+  const unlock = () => { if (BrowserPlayer.wanted && BrowserPlayer.blocked) BrowserPlayer.start(); };
+  ["click", "touchend", "keydown"].forEach((ev) => document.addEventListener(ev, unlock, { capture: true, passive: true }));
+}
+
 class YapaiaBeatCard extends HTMLElement {
   static getStubConfig(hass) {
     const entity = Object.keys(hass.states).find((e) => e.startsWith("media_player.yapaia_beat")) || "media_player.yapaia_beat";
@@ -156,7 +164,7 @@ class YapaiaBeatCard extends HTMLElement {
         style: "Design",
         max_presets: "Anzahl Favoriten-Tasten",
         show_slide: "DAB+ Slideshow anzeigen",
-        show_output: "Ausgabe-Tasten (Mini-PC / dieses Gerät)",
+        show_output: "Ausgabe-Auswahl (Mini-PC / dieses Gerät / Lautsprecher)",
       }[s.name]),
     };
   }
@@ -188,7 +196,7 @@ class YapaiaBeatCard extends HTMLElement {
 
   _browserOnly() {
     const a = this._stateObj ? this._stateObj.attributes : {};
-    return BrowserPlayer.wanted && !(a.local_audio && a.local_output !== false);
+    return BrowserPlayer.wanted && !a.speaker && !(a.local_audio && a.local_output !== false);
   }
 
   _call(domain, service, data = {}) {
@@ -224,9 +232,9 @@ class YapaiaBeatCard extends HTMLElement {
               <input type="range" min="0" max="100" step="1" class="volume">
             </div>
             <button class="b follow small" title="Automatische Senderverfolgung">${svg(ICONS.follow)}</button>
-            <button class="b out-local small" title="Lautsprecher am Mini-PC">${svg(ICONS.speaker)}</button>
-            <button class="b out-device small" title="Auf diesem Gerät abspielen">${svg(ICONS.device)}</button>
+            <button class="b out small" title="Ausgabe wählen">${svg(ICONS.speaker)}</button>
           </div>
+          <div class="outmenu" hidden></div>
           <div class="msg"></div>
         </div>
       </div>`;
@@ -237,7 +245,7 @@ class YapaiaBeatCard extends HTMLElement {
       song: q(".song"), bars: [...card.querySelectorAll(".sig i")], st: q(".st"), fo: q(".fo"), slide: q(".slide"),
       presets: q(".presets"), play: q(".play"), fav: q(".fav"), mute: q(".mute"), volume: q(".volume"),
       follow: q(".follow"), msg: q(".msg"), marquee: q(".marquee"),
-      outLocal: q(".out-local"), outDevice: q(".out-device"),
+      out: q(".out"), outMenu: q(".outmenu"),
     };
     q(".prev").onclick = () => this._call("media_player", "media_previous_track");
     q(".next").onclick = () => this._call("media_player", "media_next_track");
@@ -245,14 +253,21 @@ class YapaiaBeatCard extends HTMLElement {
       if (!this._playing && BrowserPlayer.wanted) BrowserPlayer.start(); // inside the tap (iOS)
       this._call("media_player", this._playing ? "media_stop" : "media_play");
     };
-    this._el.outDevice.onclick = () => {
-      BrowserPlayer.setWanted(!BrowserPlayer.wanted);
-      this._render();
+    this._el.out.onclick = () => {
+      if (BrowserPlayer.blocked) { BrowserPlayer.start(); return; }
+      this._el.outMenu.hidden = !this._el.outMenu.hidden;
+      this._renderOutMenu();
     };
-    this._el.outLocal.onclick = () => {
-      const sw = this._config.entity.replace("media_player.", "switch.") + "_local_output";
-      const on = this._stateObj && this._stateObj.attributes.local_output;
-      this._hass.callService("switch", on ? "turn_off" : "turn_on", { entity_id: sw });
+    this._el.outMenu.onclick = (ev) => {
+      const b = ev.target.closest("[data-out]");
+      if (!b || b.disabled) return;
+      const out = b.dataset.out;
+      // start the browser inside the tap (iOS)
+      BrowserPlayer.setWanted(out === "browser" || out === "both");
+      const output = out.startsWith("speaker:") ? out.slice(8) : out === "local" || out === "both" ? "local" : "none";
+      this._hass.callService("yapaia_beat", "set_output", { output });
+      this._el.outMenu.hidden = true;
+      this._render();
     };
     this._el.mute.onclick = () => this._call("media_player", "volume_mute", { is_volume_muted: !this._muted });
     this._el.volume.onchange = (e) => {
@@ -292,6 +307,35 @@ class YapaiaBeatCard extends HTMLElement {
       this._onPlayer = () => this._render();
       BrowserPlayer._listeners.add(this._onPlayer);
     }
+  }
+
+  _outMode(a) {
+    if (a.speaker) return "speaker:" + a.speaker;
+    const local = a.local_audio && a.local_output !== false;
+    return local && BrowserPlayer.wanted ? "both" : BrowserPlayer.wanted ? "browser" : local ? "local" : "none";
+  }
+
+  _outLabel(a) {
+    const mode = this._outMode(a);
+    if (mode.startsWith("speaker:")) {
+      const p = (a.players || []).find((x) => x.entity_id === a.speaker);
+      return p ? p.name : a.speaker;
+    }
+    return { local: "Mini-PC", browser: "Dieses Gerät", both: "Mini-PC + dieses Gerät", none: "keine" }[mode];
+  }
+
+  _renderOutMenu() {
+    const a = this._stateObj ? this._stateObj.attributes : {};
+    const mode = this._outMode(a);
+    const item = (value, label, disabled) =>
+      `<button data-out="${esc(value)}" class="${mode === value ? "active" : ""}" ${disabled ? "disabled" : ""}>${esc(label)}</button>`;
+    const players = a.players || [];
+    this._el.outMenu.innerHTML =
+      item("browser", "📱 Dieses Gerät", !a.stream_path) +
+      item("local", "🖥 Mini-PC", !a.local_audio) +
+      item("both", "🖥 Mini-PC + 📱 dieses Gerät", !a.local_audio || !a.stream_path) +
+      players.map((p) => item("speaker:" + p.entity_id, "🔊 " + p.name)).join("") +
+      (a.local_audio ? "" : item("none", "🔇 Keine Ausgabe"));
   }
 
   _render() {
@@ -350,15 +394,13 @@ class YapaiaBeatCard extends HTMLElement {
     e.mute.innerHTML = svg(this._muted ? ICONS.mute : ICONS.volDown);
     const vol = this._browserOnly() ? BrowserPlayer.volume : Math.round((a.volume_level || 0) * 100);
     if (!e.volume.matches(":active")) e.volume.value = vol;
-    const localOn = a.local_audio && a.local_output !== false;
-    e.outLocal.hidden = !this._config.show_output || !a.local_audio;
-    e.outDevice.hidden = !this._config.show_output || !a.stream_path;
-    e.outLocal.classList.toggle("active", !!localOn);
-    e.outDevice.classList.toggle("active", BrowserPlayer.wanted);
-    e.outDevice.classList.toggle("blink", BrowserPlayer.wanted && BrowserPlayer.blocked);
-    e.outDevice.title = BrowserPlayer.blocked ? "Tippen, um den Ton auf diesem Gerät zu starten" : "Auf diesem Gerät abspielen";
+    e.out.hidden = !this._config.show_output;
+    e.out.classList.toggle("active", !!a.speaker || BrowserPlayer.wanted);
+    e.out.classList.toggle("blink", BrowserPlayer.wanted && BrowserPlayer.blocked);
+    e.out.title = BrowserPlayer.blocked ? "Tippen, um den Ton auf diesem Gerät zu starten" : `Ausgabe: ${this._outLabel(a)}`;
+    if (!e.outMenu.hidden) this._renderOutMenu();
     BrowserPlayer.updateSession(a, this._hass);
-    e.msg.textContent = a.follow_message || "";
+    e.msg.textContent = a.speaker_error ? `⚠ ${a.speaker_error}` : a.follow_message || "";
 
     const favs = (a.favorites || []).slice(0, this._config.max_presets);
     const key = JSON.stringify(favs.map((f) => [f.id, f.name, f.logo])) + (a.active_favorite || a.station_id);
@@ -438,6 +480,11 @@ YapaiaBeatCard.styles = `
   .b[hidden] { display: none; }
   .vol { flex: 1; display: flex; align-items: center; gap: 6px; min-width: 120px; }
   .volume { flex: 1; accent-color: var(--accent); }
+  .outmenu { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+  .outmenu[hidden] { display: none; }
+  .outmenu button { border: 1px solid #ffffff2a; background: #0005; color: #f3e6d4; border-radius: 16px; padding: 6px 12px; font: inherit; font-size: 13px; cursor: pointer; }
+  .outmenu button.active { border-color: var(--accent); color: #fff; background: #ff8a3d55; }
+  .outmenu button:disabled { opacity: .35; cursor: not-allowed; }
   .msg { color: #ffd9a8; font-size: 12px; min-height: 0; margin-top: 6px; }
   .msg:empty { display: none; }
   @media (max-width: 420px) { .slide { display: none; } .logo-wrap { width: 72px; height: 72px; } .name { font-size: 17px; } }

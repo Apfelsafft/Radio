@@ -31,6 +31,9 @@
     "select": {
       "favorite": {
         "name": "Favorit"
+      },
+      "output": {
+        "name": "Ausgabe"
       }
     },
     "sensor": {
@@ -145,6 +148,16 @@
         "favorite": {
           "name": "Favorit",
           "description": "Hinzufügen oder entfernen."
+        }
+      }
+    },
+    "set_output": {
+      "name": "Ausgabe wählen",
+      "description": "Wo das Radio zu hören ist: local (Mini-PC), none (nur Browser) oder ein Media Player.",
+      "fields": {
+        "output": {
+          "name": "Ausgabe",
+          "description": "local, none oder Entitäts-ID eines Media Players (z. B. media_player.wohnzimmer)."
         }
       }
     }

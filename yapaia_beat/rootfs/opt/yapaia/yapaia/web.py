@@ -193,7 +193,22 @@ async def settings(request: web.Request) -> web.Response:
         radio.set_auto_follow(bool(data["auto_follow"]))
     if "local_output" in data:
         await radio.set_local_output(bool(data["local_output"]))
-    return _ok(auto_follow=radio.auto_follow, local_output=radio.audio.local_enabled)
+    if "speaker" in data:
+        radio.set_speaker(data["speaker"])
+    return _ok(auto_follow=radio.auto_follow, local_output=radio.audio.local_enabled, speaker=radio.speaker)
+
+
+@routes.post("/api/players")
+async def players(request: web.Request) -> web.Response:
+    """The integration reports the media players of Home Assistant."""
+    data = await _json(request)
+    players = data.get("players")
+    if not isinstance(players, list):
+        raise ValueError("players fehlt")
+    _radio(request).set_players(players)
+    if "error" in data:
+        _radio(request).set_speaker_error(data["error"])
+    return _ok()
 
 
 @routes.post("/api/favorites")

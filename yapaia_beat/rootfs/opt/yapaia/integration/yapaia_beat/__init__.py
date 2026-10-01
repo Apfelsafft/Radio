@@ -21,6 +21,7 @@ from homeassistant.helpers.typing import ConfigType
 
 from .const import CARD_PATH, CARD_URL, DOMAIN, STREAM_URL, VERSION
 from .coordinator import YapaiaCoordinator
+from .speaker import SpeakerSync
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -82,6 +83,12 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
             if sid:
                 await coord.command("/api/favorites", {"id": sid, "favorite": call.data.get("favorite", True)})
 
+    async def set_output(call: ServiceCall) -> None:
+        await _call("/api/settings", output_payload(call.data["output"]))
+
+    hass.services.async_register(
+        DOMAIN, "set_output", set_output, schema=vol.Schema({vol.Required("output"): cv.string})
+    )
     hass.services.async_register(
         DOMAIN,
         "play",
@@ -106,12 +113,27 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     return True
 
 
+def output_payload(output: str) -> dict:
+    """``local`` = Mini-PC speakers, ``none`` = only browsers/stream,
+    otherwise the entity id of a Home Assistant media player."""
+    output = output.strip()
+    if output in ("local", "mini-pc", "host"):
+        return {"local_output": True, "speaker": None}
+    if output in ("none", "browser", "off", ""):
+        return {"local_output": False, "speaker": None}
+    if not output.startswith("media_player."):
+        raise HomeAssistantError(f"Unbekannte Ausgabe: {output}")
+    return {"local_output": False, "speaker": output}
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: YapaiaConfigEntry) -> bool:
     coordinator = YapaiaCoordinator(hass, entry)
     await coordinator.async_config_entry_first_refresh()
     entry.runtime_data = coordinator
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
     coordinator.start_push(entry)
+    coordinator.speaker = SpeakerSync(hass, coordinator)
+    coordinator.speaker.start(entry)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
 

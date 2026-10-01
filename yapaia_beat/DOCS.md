@@ -152,6 +152,7 @@ tap_action:
 | `switch.yapaia_beat_auto_follow` | Automatische Senderverfolgung |
 | `switch.yapaia_beat_mute` | Stumm |
 | `switch.yapaia_beat_local_output` | Lautsprecher am Mini-PC an/aus (Browser-Stream läuft weiter) |
+| `select.yapaia_beat_output` | Ausgabe: Mini-PC, nur Browser oder ein anderer Media Player (Sonos, Chromecast, Music Assistant …) |
 | `button.yapaia_beat_*` | Suchlauf FM/DAB+/beide, nächster/vorheriger Favorit, FM ±, Favorit umschalten |
 | `image.yapaia_beat_logo` / `_slideshow` | Senderlogo / DAB+-Slideshow |
 
@@ -165,6 +166,9 @@ Namen und Logo-URLs) u. a.
 - `yapaia_beat.play` – `station` (Name), `station_id` oder `frequency` (MHz)
 - `yapaia_beat.scan` – `band`: `fm`, `dab` oder `all`
 - `yapaia_beat.set_favorite` – `station_id` (leer = aktueller Sender), `favorite`
+- `yapaia_beat.set_output` – `output`: `local` (Mini-PC), `none` (nur
+  Browser) oder die Entitäts-ID eines Media Players, z. B.
+  `media_player.wohnzimmer`
 - sowie alle `media_player.*`-Aktionen, z. B. `media_player.select_source`
   mit dem Namen eines Favoriten oder `media_player.play_media` mit
   `media_content_id: "98.3"`
@@ -186,27 +190,48 @@ actions:
       volume_level: 0.3
 ```
 
-## Radio im Browser hören (iPad, Handy, Android-Autoradio)
+## Ausgabe wählen: Mini-PC, dieses Gerät oder andere Lautsprecher
 
-Der Ton kann statt – oder zusätzlich zu – den Lautsprechern am
-Home-Assistant-Rechner direkt auf dem Gerät ausgegeben werden, mit dem du
-gerade Home Assistant bedienst:
+Wie bei Spotify („Mit einem Gerät verbinden") wählst du, wo das Radio zu hören
+ist:
 
-- **Add-on-Oberfläche** (Seitenleiste „Yapaia Beat"): *Ausgabe* →
-  **Mini-PC**, **Dieses Gerät** oder **Beide**.
-- **Radio-Karte**: Taste 🔈 schaltet die Lautsprecher am Mini-PC,
-  Taste 📱 die Wiedergabe auf diesem Gerät.
-- **Ohne eigene Karte**: *Medien* in der Seitenleiste → Ausgabegerät
-  „Dieser Browser" → *Yapaia Beat → Live*.
+- **Dieses Gerät** – das Gerät, mit dem du gerade Home Assistant bedienst
+  (iPad, Handy, Android-Autoradio), im Browser bzw. in der App
+- **Mini-PC** – die Lautsprecher am Home-Assistant-Rechner
+- **Mini-PC + dieses Gerät**
+- **Home-Assistant-Lautsprecher** – jeder Media Player in Home Assistant,
+  der Musik von einer Adresse abspielen kann: Sonos, Chromecast/Google Nest,
+  Music-Assistant-Player, DLNA-Geräte, Kodi … Die Liste füllt sich
+  automatisch, sobald die Integration eingerichtet ist.
 
-Die Auswahl „Dieses Gerät" wird pro Gerät/Browser gespeichert. Der Mini-PC
-lässt sich zusätzlich über `switch.yapaia_beat_local_output` schalten (z. B. in
-einer Automation, wenn das Autoradio verbunden ist).
+So geht's:
+
+- **Add-on-Oberfläche** (Seitenleiste „Yapaia Beat"): Schaltfläche neben
+  *Ausgabe* antippen → Gerät wählen.
+- **Radio-Karte**: Taste 🔈 → Gerät wählen.
+- **Standard-Karten/Automationen**: `select.yapaia_beat_output` oder die
+  Aktion `yapaia_beat.set_output`.
+
+Bei einem Home-Assistant-Lautsprecher startet die Integration den
+Live-Stream auf dem Gerät, sobald das Radio läuft, und stoppt ihn, wenn du
+das Radio ausschaltest. Senderwechsel laufen ohne Unterbrechung im selben
+Stream weiter; der Lautstärkeregler steuert dann die Lautstärke des
+Lautsprechers. Der Lautsprecher bekommt eine signierte Adresse von Home
+Assistant (keine Portfreigabe nötig); dafür muss unter *Einstellungen → System
+→ Netzwerk* eine im Heimnetz erreichbare URL stehen (Standard).
+
+Die Auswahl „Dieses Gerät" wird pro Gerät/Browser gespeichert, die übrigen
+Ausgaben gelten für alle. Der Mini-PC lässt sich zusätzlich über
+`switch.yapaia_beat_local_output` schalten (z. B. in einer Automation, wenn das
+Autoradio verbunden ist).
 
 Hinweise:
 
-- Browser erlauben Ton erst nach einem Antippen. Nach einem Neuladen der Seite
-  blinkt die 📱-Taste bzw. erscheint „▶ Ton hier aktivieren" – einmal tippen.
+- Browser (vor allem Safari auf iPad/iPhone) erlauben Ton erst, nachdem man
+  die Seite berührt hat. Beim Umschalten auf „Dieses Gerät" startet der Ton
+  sofort. Wird die Seite neu geladen, startet er beim ersten Tippen irgendwo
+  auf der Seite (z. B. auf einen Favoriten) – eine eigene Taste ist dafür
+  nicht nötig.
 - Die Wiedergabe im Browser ist ca. 2–4 Sekunden verzögert.
 - Auf iPad/iPhone regelt man die Lautstärke mit den Gerätetasten (Safari
   erlaubt keine Lautstärkeregelung per Webseite). Auf Android funktioniert
