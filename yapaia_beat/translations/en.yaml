@@ -48,6 +48,13 @@ configuration:
     name: RTL-SDR device index
   resume_last_station:
     name: Resume last station
+  standby_minutes:
+    name: Standby after (minutes)
+    description: >-
+      When nobody is listening (host speakers off and no browser/player
+      connected to the stream) reception stops after this time to spare the
+      RTL-SDR stick. It resumes automatically when someone listens again.
+      0 = standby off.
   install_integration:
     name: Install integration automatically
     description: Installs/updates the Yapaia Beat integration (entities and Lovelace card) in /config/custom_components.

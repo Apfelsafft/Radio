@@ -56,6 +56,7 @@ class Radio:
         self._last_json = ""
         self._slide: tuple[int, bytes, str] | None = None
         self._recover_at = 0.0
+        self._idle_since: float | None = None
         self._recover_error: str | None = None
         self._recover_tries = 0
 
@@ -229,7 +230,48 @@ class Radio:
         await self.audio.set_local_enabled(enabled)
         self.store.settings["local_output"] = self.audio.local_enabled
         self.store.save()
+        if enabled:
+            self.wake()
         self.changed()
+
+    # ------------------------------------------------------------------ standby
+    def _listening(self) -> bool:
+        """Can anybody hear the radio right now?"""
+        local = self.audio.local and self.audio.local_enabled
+        return local or self.audio.client_count > 0
+
+    async def _check_standby(self) -> None:
+        minutes = self.opts.standby_minutes
+        if minutes <= 0 or self.state != "playing" or self._listening():
+            self._idle_since = None
+            return
+        now = time.monotonic()
+        if self._idle_since is None:
+            self._idle_since = now
+            return
+        if now - self._idle_since < minutes * 60:
+            return
+        _LOGGER.info("Nobody listening for %d min – standby (receiver off)", minutes)
+        async with self._lock:
+            await self._stop_tuner()
+            self.state = "standby"
+            self._idle_since = None
+        self.changed()
+
+    def wake(self) -> None:
+        """Somebody wants to listen again (browser connects, speakers on)."""
+        if self.state == "standby" and self.station and not self._lock.locked():
+            st = self.station
+            _LOGGER.info("Waking up from standby")
+
+            async def resume() -> None:
+                with contextlib.suppress(Exception):
+                    if st.get("transient"):
+                        await self.tune_fm(st["freq"])
+                    else:
+                        await self.play(st["id"])
+
+            asyncio.create_task(resume())
 
     def set_auto_follow(self, enabled: bool) -> None:
         self.auto_follow = bool(enabled)
@@ -392,6 +434,7 @@ class Radio:
             self._enrich_transient(tuner)
         if not self._lock.locked():
             await self._check_follow()
+            await self._check_standby()
         self.changed()
 
     async def _recover(self) -> None:
@@ -678,6 +721,7 @@ class Radio:
             "local_output": self.audio.local_enabled,
             "stream_clients": self.audio.client_count,
             "auto_follow": self.auto_follow,
+            "standby_minutes": self.opts.standby_minutes,
             "follow": dict(self.follow),
             "scan": dict(self.scan),
             "active_favorite": self.active_favorite(),

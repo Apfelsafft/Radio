@@ -236,6 +236,15 @@ data:
   media_content_type: music
 ```
 
+## Standby
+
+Hört niemand zu – Lautsprecher am Mini-PC ausgeschaltet und kein Browser oder
+Player mit dem Stream verbunden – stoppt Yapaia Beat nach `standby_minutes`
+(Standard 10 Minuten) den Empfang. Das schont den RTL-SDR Stick (Wärme,
+Stromverbrauch). Der Sender bleibt gespeichert: Sobald sich wieder ein Browser
+verbindet, die Mini-PC-Lautsprecher eingeschaltet werden oder Play gedrückt
+wird, geht es automatisch weiter. `standby_minutes: 0` schaltet den Standby ab.
+
 ## Automatische Senderverfolgung
 
 Sinkt die Empfangsqualität länger als *Verzögerung* unter die *Schwelle*,
@@ -284,6 +293,18 @@ Favoriten bleiben erhalten und werden automatisch zugeordnet.
   Unter *Einstellungen → System → Hardware* muss ein Gerät „RTL2838" o. ä.
   auftauchen. Läuft ein anderes Add-on mit dem Stick (z. B. rtl_433), dieses
   stoppen – ein Stick kann nur von einem Programm genutzt werden.
+- **Proxmox / VM mit USB-Durchreichung**: Auf dem Proxmox-Host den
+  DVB-T-Treiber sperren, sonst greift sich der Host den Stick nach jedem
+  USB-Reset und streitet mit der VM darum:
+  ```bash
+  echo "blacklist dvb_usb_rtl28xxu" > /etc/modprobe.d/blacklist-rtlsdr.conf
+  update-initramfs -u   # danach Host neu starten
+  ```
+  Den Stick in Proxmox per *Vendor/Device ID* (0bda:2838) an die VM geben.
+- **Stick wird heiß / NESDR SMArTee**: Diese Sticks haben eine immer
+  eingeschaltete Bias-Tee (4,5 V an der Antennenbuchse). Passive Antennen mit
+  Gleichstrom-Kurzschluss (viele Dipole/Balun-Antennen) belasten den Stick
+  dann dauerhaft – einen SMA-DC-Blocker zwischen Stick und Antenne setzen.
 - **Kein Ton**: Unter *Einstellungen → Add-ons → Yapaia Beat → Audio* das
   richtige Ausgabegerät wählen. Der MP3-Stream funktioniert unabhängig davon.
 - **Rauschen / wenige Sender**: Antenne verbessern, `rtl_gain` testen

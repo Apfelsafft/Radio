@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.3.0
+
+- Standby: hört niemand zu (Mini-PC-Lautsprecher aus, kein Browser/Player am
+  Stream), stoppt der Empfang nach `standby_minutes` (Standard 10, 0 = aus) –
+  automatisches Weiterspielen, sobald wieder jemand zuhört
+- Schonender Umgang mit dem RTL-SDR Stick: Programme werden sauber beendet
+  (SIGINT statt hartem Abbruch mitten im USB-Transfer) und zwischen zwei
+  Zugriffen bekommt der Stick 1,5 s Pause – schnelle Wechsel (Senderverfolgung,
+  Umschalten) konnten den Stick hinter einer VM-USB-Durchreichung aufhängen
+- Hängender Stick wird erkannt: kein Ton mehr vom DAB-Empfänger (30 s) bzw.
+  keine Daten von rtl_fm (10 s) → automatische Wiederherstellung
+- Doku: Hinweise zu Proxmox (DVB-Treiber sperren) und NESDR SMArTee (Bias-Tee)
+
 ## 1.2.0
 
 - Favoriten passen sich dem freien Platz an: Seiten statt Scrollen, wischen
