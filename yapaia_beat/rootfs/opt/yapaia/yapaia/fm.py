@@ -14,7 +14,7 @@ from typing import Any
 
 from .config import Options
 from .dsp import MPX_RATE, FmStereoDecoder
-from .procs import gain_args, kill
+from .procs import device_ready, device_released, gain_args, kill, stop_sdr
 from .usb import reset_sticks
 
 _LOGGER = logging.getLogger(__name__)
@@ -22,6 +22,7 @@ _LOGGER = logging.getLogger(__name__)
 FM_START = 87.5
 FM_STOP = 108.0
 CHUNK_BYTES = MPX_RATE // 20 * 2  # 50 ms of int16 MPX
+STALL_TIMEOUT = 10  # s without samples = stick hangs
 
 PcmCallback = Callable[[bytes], Awaitable[None]]
 
@@ -158,6 +159,7 @@ class FmTuner:
             "-f", f"{self.freq * 1e6:.0f}",
             "-",
         ]  # fmt: skip
+        await device_ready()
         _LOGGER.debug("Starting %s", " ".join(cmd))
         self._rtl = await asyncio.create_subprocess_exec(
             *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
@@ -185,7 +187,7 @@ class FmTuner:
         self.running = False
         for t in self._tasks:
             t.cancel()
-        await asyncio.gather(kill(self._rtl), kill(self._redsea))
+        await asyncio.gather(stop_sdr(self._rtl), kill(self._redsea))
         self._tasks = []
 
     # ------------------------------------------------------------------
@@ -194,7 +196,13 @@ class FmTuner:
         rest = b""
         try:
             while True:
-                data = await self._rtl.stdout.read(CHUNK_BYTES)
+                try:
+                    data = await asyncio.wait_for(self._rtl.stdout.read(CHUNK_BYTES), STALL_TIMEOUT)
+                except asyncio.TimeoutError:
+                    # stick hangs without rtl_fm noticing – treat as lost
+                    self.error = "Keine Daten mehr vom RTL-SDR Stick"
+                    _LOGGER.error("rtl_fm delivers no data for %ss", STALL_TIMEOUT)
+                    break
                 if not data:
                     break
                 data = rest + data
@@ -211,7 +219,7 @@ class FmTuner:
         finally:
             self.running = False
             await asyncio.sleep(0.2)  # let stderr reader catch up
-            self.error = self._error_from_stderr() or self.error
+            self.error = self.error or self._error_from_stderr()
 
     def _feed_redsea(self, data: bytes) -> None:
         proc = self._redsea
@@ -319,6 +327,7 @@ async def rtl_power_sweep(opts: Options, start_mhz: float, stop_mhz: float, bin_
         *gain_args("-g", opts.gain_value if opts.gain_value is not None else 30),
         "-",
     ]  # fmt: skip
+    await device_ready()
     _LOGGER.debug("Starting %s", " ".join(cmd))
     proc = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
     lines: list[str] = []
@@ -345,6 +354,7 @@ async def rtl_power_sweep(opts: Options, start_mhz: float, stop_mhz: float, bin_
             await kill(proc)
             readers.cancel()
             reset_sticks()
+    device_released()
     text = "".join(err_lines)
     spectrum = _parse_rtl_power("".join(lines))
     if not spectrum:

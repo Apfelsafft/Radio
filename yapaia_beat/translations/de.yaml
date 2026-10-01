@@ -56,6 +56,13 @@ configuration:
   resume_last_station:
     name: Letzten Sender fortsetzen
     description: Nach einem Neustart den zuletzt gespielten Sender wieder abspielen.
+  standby_minutes:
+    name: Standby nach (Minuten)
+    description: >-
+      Hört niemand zu (Mini-PC-Lautsprecher aus und kein Browser/Player mit dem
+      Stream verbunden), wird der Empfang nach dieser Zeit gestoppt – schont den
+      RTL-SDR Stick. Sobald wieder jemand zuhört, geht es automatisch weiter.
+      0 = Standby aus.
   install_integration:
     name: Integration automatisch installieren
     description: >-

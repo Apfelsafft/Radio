@@ -36,6 +36,7 @@ class Options:
     logo_lookup_online: bool = True
     country_code: str = "DE"
     resume_last_station: bool = True
+    standby_minutes: int = 10
     install_integration: bool = True
 
     @property

@@ -320,6 +320,7 @@ async def stream(request: web.Request) -> web.StreamResponse:
     )
     await resp.prepare(request)
     queue = radio.audio.add_client()
+    radio.wake()  # a listener is back → leave standby
     radio.changed()
     try:
         while True:

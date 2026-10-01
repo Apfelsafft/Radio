@@ -50,6 +50,8 @@ class YapaiaMediaPlayer(YapaiaEntity, MediaPlayerEntity):
         st = self._d.get("state")
         if st in ("tuning", "following", "scanning"):
             return MediaPlayerState.BUFFERING
+        if st == "standby":
+            return MediaPlayerState.STANDBY
         if self._d.get("playing"):
             return MediaPlayerState.PLAYING
         return MediaPlayerState.IDLE

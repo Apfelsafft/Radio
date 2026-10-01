@@ -1,5 +1,5 @@
 name: Yapaia Beat
-version: "1.2.0"
+version: "1.3.0"
 slug: yapaia_beat
 description: >-
   FM- und DAB+-Radio mit einem RTL-SDR Stick: Sendersuchlauf, Favoriten,
@@ -45,6 +45,7 @@ options:
   mp3_bitrate: "128"
   rtl_device_index: 0
   resume_last_station: true
+  standby_minutes: 10
   install_integration: true
   log_level: info
 schema:
@@ -66,5 +67,6 @@ schema:
   mp3_bitrate: list(64|96|128|160|192|256|320)
   rtl_device_index: int(0,9)
   resume_last_station: bool
+  standby_minutes: int(0,240)
   install_integration: bool
   log_level: list(debug|info|warning|error)

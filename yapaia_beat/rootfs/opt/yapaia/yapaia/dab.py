@@ -20,7 +20,7 @@ import aiohttp
 
 from .config import Options
 from .fm import rtl_power_sweep
-from .procs import gain_args, kill
+from .procs import device_ready, gain_args, kill, stop_sdr
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -38,6 +38,7 @@ DAB_CHANNELS: dict[str, float] = {
 }  # fmt: skip
 
 PcmCallback = Callable[[bytes], Awaitable[None]]
+AUDIO_STALL = 30  # s without DAB audio = receiver lost
 _PORTS = itertools.cycle(range(7979, 7990))
 
 
@@ -95,6 +96,7 @@ class DabTuner:
         self._stderr: collections.deque[str] = collections.deque(maxlen=30)
         self._last_audio = 0.0
         self._quality = 0.0
+        self._audio_since = 0.0
         self._synced = False
         self.started = 0.0
 
@@ -106,6 +108,7 @@ class DabTuner:
             "-T",
             *gain_args("-g", self.opts.gain_value),
         ]  # fmt: skip
+        await device_ready()
         _LOGGER.debug("Starting %s", " ".join(cmd))
         self._proc = await asyncio.create_subprocess_exec(
             *cmd, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE
@@ -113,6 +116,7 @@ class DabTuner:
         self._session = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=None, connect=3))
         self.running = True
         self.started = time.monotonic()
+        self._audio_since = self.started
         self._tasks = [asyncio.create_task(self._read_stderr()), asyncio.create_task(self._poll())]
         self._audio_task: asyncio.Task | None = None
         if self.sid and self.on_pcm:
@@ -130,6 +134,7 @@ class DabTuner:
         await kill(self._decoder)
         self.sid = norm_sid(sid)
         self._last_audio = 0.0
+        self._audio_since = time.monotonic()
         self._slide_change = None
         self.slide_version = 0
         self._audio_task = asyncio.create_task(self._audio())
@@ -143,7 +148,7 @@ class DabTuner:
         for t in self._tasks:
             t.cancel()
         await asyncio.gather(*self._tasks, return_exceptions=True)
-        await asyncio.gather(kill(self._decoder), kill(self._proc))
+        await asyncio.gather(kill(self._decoder), stop_sdr(self._proc))
         if self._session:
             await self._session.close()
         self._tasks = []
@@ -170,7 +175,7 @@ class DabTuner:
         if "No supported devices" in joined or "No valid device found" in joined or "Could not open" in joined:
             self.error = "Kein RTL-SDR Stick gefunden oder Stick belegt"
         elif not self.error and self._proc.returncode not in (0, -15):
-            self.error = f"welle-cli wurde beendet (Code {self._proc.returncode})"
+            self.error = f"welle-cli wurde beendet (Code {self._proc.returncode}) – RTL-SDR Stick prüfen"
 
     async def _poll(self) -> None:
         assert self._session
@@ -182,7 +187,23 @@ class DabTuner:
                         self._update_quality()
             except (aiohttp.ClientError, asyncio.TimeoutError, ValueError):
                 pass
+            self._check_alive()
             await asyncio.sleep(1.0)
+
+    def _check_alive(self) -> None:
+        """welle-cli keeps running when the stick hangs or disappears – only
+        the audio stops.  Report that, so the radio can recover."""
+        if not (self.running and self.sid and self.on_pcm):
+            return
+        now = time.monotonic()
+        if self.started_audio:
+            silent = now - self._last_audio > AUDIO_STALL
+        else:
+            silent = now - self._audio_since > AUDIO_STALL + 15
+        if silent:
+            self.error = "Kein Ton mehr vom DAB-Empfänger – RTL-SDR Stick oder Empfang prüfen"
+            _LOGGER.error("No DAB audio for %ss – receiver considered lost", AUDIO_STALL)
+            self.running = False
 
     def _update_quality(self) -> None:
         snr = self.snr

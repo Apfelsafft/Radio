@@ -55,7 +55,7 @@ function render(s) {
   const prevCount = S ? S.station_count : null;
   S = s;
   const st = s.station;
-  const states = { idle: "Bereit", tuning: "Stimme ab …", playing: "Läuft", scanning: "Suchlauf", following: "Senderverfolgung", error: "Fehler" };
+  const states = { idle: "Bereit", tuning: "Stimme ab …", playing: "Läuft", scanning: "Suchlauf", following: "Senderverfolgung", standby: "Standby", error: "Fehler" };
   $("#now-state").textContent = states[s.state] || s.state;
   $("#now-name").textContent = st ? st.name : "Kein Sender";
   const meta = [];
