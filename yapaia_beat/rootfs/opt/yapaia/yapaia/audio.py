@@ -14,6 +14,7 @@ import time
 
 import numpy as np
 
+from .ansage import Mischer
 from .procs import kill
 
 _LOGGER = logging.getLogger(__name__)
@@ -38,6 +39,8 @@ class AudioOutput:
         self.level = 0.0
         self._last_write = 0.0
         self._keepalive: asyncio.Task | None = None
+        # announcements of other Yapaia modules, mixed into everything we output
+        self.mischer = Mischer()
 
     # ------------------------------------------------------------------
     async def _ensure_pacat(self) -> asyncio.subprocess.Process | None:
@@ -111,6 +114,8 @@ class AudioOutput:
     async def write(self, pcm: bytes, local: bool = True) -> None:
         if not pcm:
             return
+        if self.mischer.aktiv:
+            pcm = self.mischer.mische(pcm)
         if local:
             self._last_write = time.monotonic()
         samples = np.frombuffer(pcm, dtype="<i2")

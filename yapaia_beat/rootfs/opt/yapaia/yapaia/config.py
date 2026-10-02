@@ -38,6 +38,7 @@ class Options:
     resume_last_station: bool = True
     standby_minutes: int = 10
     install_integration: bool = True
+    announce_music_level: int = 20  # % of the music volume while an announcement plays
 
     @property
     def gain_value(self) -> float | None:

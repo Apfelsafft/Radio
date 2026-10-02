@@ -43,3 +43,27 @@ set_output:
       example: "media_player.wohnzimmer"
       selector:
         text:
+announce:
+  fields:
+    message:
+      required: true
+      example: "In 300 Metern rechts abbiegen"
+      selector:
+        text:
+    engine:
+      example: "tts.piper"
+      selector:
+        entity:
+          domain: tts
+    language:
+      example: "de-DE"
+      selector:
+        text:
+    priority:
+      default: hinweis
+      selector:
+        select:
+          options:
+            - info
+            - hinweis
+            - navigation

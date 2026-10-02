@@ -11,6 +11,7 @@ from typing import Any
 from aiohttp import WSMsgType, web
 
 from .config import APP_DIR, VERSION
+from .ansage import PRIORITAETEN, dekodiere
 from .radio import Radio
 from .store import display_name, normalize_name
 
@@ -183,6 +184,25 @@ async def volume(request: web.Request) -> web.Response:
         vol = radio.audio.volume + int(data["step"])
     radio.set_volume(None if vol is None else int(vol), data.get("muted"))
     return _ok(volume=radio.audio.volume, muted=radio.audio.muted)
+
+
+@routes.post("/api/announce")
+async def announce(request: web.Request) -> web.Response:
+    """An announcement of another Yapaia module (e.g. Yapaia Go's navigation
+    voice): raw WAV/MP3 in the body, mixed into the radio with the music
+    turned down.  409 when nobody would hear it – the caller then speaks some
+    other way."""
+    radio = _radio(request)
+    grund = radio.ansage_moeglich()
+    if grund:
+        return web.json_response({"ok": False, "error": grund}, status=409)
+    daten = await request.read()
+    if not daten:
+        raise ValueError("Keine Audiodaten")
+    prioritaet = PRIORITAETEN.get(request.query.get("priority", "hinweis"), 1)
+    pcm = await dekodiere(daten, request.query.get("format", ""))
+    dauer = radio.audio.mischer.einreihen(pcm, prioritaet)
+    return _ok(seconds=round(dauer, 2))
 
 
 @routes.post("/api/settings")

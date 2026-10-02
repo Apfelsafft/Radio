@@ -261,6 +261,20 @@ class Radio:
         self.speaker_error = str(error) if error else None
         self.changed()
 
+    # ------------------------------------------------------------------ announcements
+    def ansage_moeglich(self) -> str | None:
+        """``None`` if an announcement would be heard, otherwise the reason.
+
+        Mixing only works while audio flows: the radio plays on the local
+        speakers, or a player/browser is connected to the stream (which keeps
+        flowing even when the radio is off).  Otherwise the caller announces
+        some other way."""
+        if self.audio.client_count > 0:
+            return None
+        if self.state in ("playing", "following") and self.audio.local and self.audio.local_enabled:
+            return None
+        return "Yapaia Beat spielt gerade nicht"
+
     # ------------------------------------------------------------------ standby
     def _listening(self) -> bool:
         """Can anybody hear the radio right now?"""

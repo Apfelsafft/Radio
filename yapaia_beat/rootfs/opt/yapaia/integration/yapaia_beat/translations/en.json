@@ -160,6 +160,28 @@
           "description": "local, none or the entity id of a media player (e.g. media_player.living_room)."
         }
       }
+    },
+    "announce": {
+      "name": "Mix in announcement",
+      "description": "Speaks a text into the playing radio: the music is turned down, the announcement mixed in, then the music comes back. For Yapaia Go and automations.",
+      "fields": {
+        "message": {
+          "name": "Message",
+          "description": "What to say."
+        },
+        "engine": {
+          "name": "Text-to-speech",
+          "description": "TTS entity (empty = Home Assistant default)."
+        },
+        "language": {
+          "name": "Language",
+          "description": "e.g. en-US (empty = engine default)."
+        },
+        "priority": {
+          "name": "Priority",
+          "description": "navigation before hinweis before info."
+        }
+      }
     }
   }
 }
