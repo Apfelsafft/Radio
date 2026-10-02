@@ -160,6 +160,28 @@
           "description": "local, none oder Entitäts-ID eines Media Players (z. B. media_player.wohnzimmer)."
         }
       }
+    },
+    "announce": {
+      "name": "Ansage einmischen",
+      "description": "Spricht einen Text in das laufende Radio: die Musik wird leiser, die Ansage eingemischt, danach wird die Musik wieder lauter. Für Yapaia Go und Automationen.",
+      "fields": {
+        "message": {
+          "name": "Text",
+          "description": "Was gesagt werden soll."
+        },
+        "engine": {
+          "name": "Sprachausgabe",
+          "description": "TTS-Entität (leer = Standard von Home Assistant)."
+        },
+        "language": {
+          "name": "Sprache",
+          "description": "z. B. de-DE (leer = Standard der Sprachausgabe)."
+        },
+        "priority": {
+          "name": "Priorität",
+          "description": "navigation vor hinweis vor info."
+        }
+      }
     }
   }
 }

@@ -14,7 +14,7 @@ from aiohttp import web
 from homeassistant.components.http import HomeAssistantView, StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
-from homeassistant.core import HomeAssistant, ServiceCall
+from homeassistant.core import HomeAssistant, ServiceCall, ServiceResponse, SupportsResponse
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.typing import ConfigType
@@ -86,6 +86,37 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     async def set_output(call: ServiceCall) -> None:
         await _call("/api/settings", output_payload(call.data["output"]))
 
+    async def announce(call: ServiceCall) -> ServiceResponse:
+        """Speak a message mixed into the radio (music turned down, then back up).
+
+        Meant for the other Yapaia modules (Yapaia Go's navigation voice …) and
+        automations.  Fails when nobody would hear it, so the caller can fall
+        back to ``tts.speak``."""
+        coords = _coordinators(hass)
+        if not coords:
+            raise HomeAssistantError("Yapaia Beat ist nicht eingerichtet")
+        audio, fmt = await tts_audio(
+            hass, call.data["message"], call.data.get("engine"), call.data.get("language")
+        )
+        res = await coords[0].send_audio(
+            "/api/announce", audio, {"format": fmt, "priority": call.data.get("priority", "hinweis")}
+        )
+        return {"seconds": res.get("seconds")}
+
+    hass.services.async_register(
+        DOMAIN,
+        "announce",
+        announce,
+        schema=vol.Schema(
+            {
+                vol.Required("message"): vol.All(cv.string, vol.Length(min=1, max=1000)),
+                vol.Optional("engine"): cv.entity_id,
+                vol.Optional("language"): cv.string,
+                vol.Optional("priority", default="hinweis"): vol.In(["info", "hinweis", "navigation"]),
+            }
+        ),
+        supports_response=SupportsResponse.OPTIONAL,
+    )
     hass.services.async_register(
         DOMAIN, "set_output", set_output, schema=vol.Schema({vol.Required("output"): cv.string})
     )
@@ -111,6 +142,30 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         schema=vol.Schema({vol.Optional("station_id"): cv.string, vol.Optional("favorite", default=True): cv.boolean}),
     )
     return True
+
+
+async def tts_audio(hass: HomeAssistant, message: str, engine: str | None, language: str | None) -> tuple[bytes, str]:
+    """Let Home Assistant's text-to-speech render ``message``.
+
+    Asks for WAV (mono, 48 kHz) so the add-on needs no decoder; engines or
+    versions that cannot convert fall back to their native format (MP3 is
+    decoded by the add-on, too)."""
+    from homeassistant.components import tts
+
+    engine = engine or tts.async_default_engine(hass)
+    if not engine:
+        raise HomeAssistantError("Keine Sprachausgabe (TTS) in Home Assistant eingerichtet")
+    wunsch = {"preferred_format": "wav", "preferred_sample_rate": 48000, "preferred_sample_channels": 1}
+    for options in (wunsch, None):
+        try:
+            media_id = tts.generate_media_source_id(hass, message, engine=engine, language=language, options=options)
+            ext, data = await tts.async_get_media_source_audio(hass, media_id)
+        except HomeAssistantError:
+            if options is None:
+                raise
+            continue
+        return data, ext
+    raise HomeAssistantError("Sprachausgabe fehlgeschlagen")  # pragma: no cover
 
 
 def output_payload(output: str) -> dict:

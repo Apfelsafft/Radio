@@ -58,6 +58,19 @@ class YapaiaCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             raise HomeAssistantError(f"Yapaia Beat: {data.get('error', r.status)}")
         return data
 
+    async def send_audio(self, path: str, audio: bytes, params: dict[str, str]) -> dict[str, Any]:
+        """POST raw audio (an announcement) to the add-on."""
+        try:
+            async with self.session.post(
+                f"{self.base}{path}", data=audio, params=params, timeout=aiohttp.ClientTimeout(total=30)
+            ) as r:
+                data = await r.json(content_type=None)
+        except (aiohttp.ClientError, asyncio.TimeoutError, ValueError) as err:
+            raise HomeAssistantError(f"Yapaia Beat: {err}") from err
+        if not data.get("ok", r.status < 400):
+            raise HomeAssistantError(f"Yapaia Beat: {data.get('error', r.status)}")
+        return data
+
     async def get_json(self, path: str) -> Any:
         try:
             async with self.session.get(f"{self.base}{path}", timeout=aiohttp.ClientTimeout(total=10)) as r:

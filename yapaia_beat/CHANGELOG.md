@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.6.0
+
+- **Ansagen einmischen:** Yapaia Go (und jede Automation) kann jetzt in das
+  laufende Radio sprechen – die Musik wird leiser, die Ansage darübergelegt,
+  danach wird die Musik wieder lauter. Nichts wird gestoppt oder neu
+  gestartet, das Radio läuft durch. Neue Aktion `yapaia_beat.announce`,
+  neue Option `announce_music_level` (Musik während Ansagen, Standard 20 %)
+
 ## 1.5.0
 
 - Radio im Browser spielt weiter, wenn man die Add-on-Seite in der

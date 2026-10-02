@@ -36,6 +36,7 @@ async def main() -> None:
     store = Store(DATA_DIR / "stations.json")
     logos = LogoManager(DATA_DIR / "logos", opts.logo_lookup_online, opts.country_code)
     audio = AudioOutput(opts.audio_output == "local", opts.mp3_bitrate, opts.default_volume)
+    audio.mischer.musik_pegel = max(0, min(100, opts.announce_music_level)) / 100
     radio = Radio(opts, store, logos, audio)
 
     runner = web.AppRunner(create_app(radio), access_log=None)

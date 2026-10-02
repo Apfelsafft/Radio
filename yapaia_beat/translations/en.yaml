@@ -55,6 +55,12 @@ configuration:
       connected to the stream) reception stops after this time to spare the
       RTL-SDR stick. It resumes automatically when someone listens again.
       0 = standby off.
+  announce_music_level:
+    name: Music during announcements (%)
+    description: >-
+      When another Yapaia module speaks (e.g. Yapaia Go's navigation), the
+      music is turned down to this share and the announcement is mixed in.
+      Afterwards it comes back. 0 = music silent.
   install_integration:
     name: Install integration automatically
     description: Installs/updates the Yapaia Beat integration (entities and Lovelace card) in /config/custom_components.

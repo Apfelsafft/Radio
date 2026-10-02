@@ -63,6 +63,12 @@ configuration:
       Stream verbunden), wird der Empfang nach dieser Zeit gestoppt – schont den
       RTL-SDR Stick. Sobald wieder jemand zuhört, geht es automatisch weiter.
       0 = Standby aus.
+  announce_music_level:
+    name: Musik während Ansagen (%)
+    description: >-
+      Spricht ein anderes Yapaia-Modul (z. B. die Navigation von Yapaia Go),
+      wird die Musik auf diesen Anteil abgesenkt und die Ansage eingemischt.
+      Danach wird sie wieder lauter. 0 = Musik ganz leise.
   install_integration:
     name: Integration automatisch installieren
     description: >-

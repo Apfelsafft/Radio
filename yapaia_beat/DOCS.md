@@ -169,6 +169,9 @@ Namen und Logo-URLs) u. a.
 - `yapaia_beat.set_output` – `output`: `local` (Mini-PC), `none` (nur
   Browser) oder die Entitäts-ID eines Media Players, z. B.
   `media_player.wohnzimmer`
+- `yapaia_beat.announce` – `message` (Text), optional `engine` (TTS-Entität,
+  leer = Standard), `language`, `priority` (`navigation`, `hinweis`, `info`):
+  spricht den Text **in das laufende Radio** – siehe „Ansagen einmischen"
 - sowie alle `media_player.*`-Aktionen, z. B. `media_player.select_source`
   mit dem Namen eines Favoriten oder `media_player.play_media` mit
   `media_content_id: "98.3"`
@@ -250,6 +253,33 @@ Hinweise:
   Hintergrund geht. Fürs Autoradio daher die App/den Browser im Vordergrund
   lassen – oder den MP3-Stream (siehe unten) in einer Radio-/Player-App wie
   VLC öffnen, die im Hintergrund weiterspielt.
+
+## Ansagen einmischen
+
+Andere Yapaia-Module – zuerst die Navigation von **Yapaia Go** – und eigene
+Automationen können etwas sagen, ohne das Radio zu unterbrechen: die Musik
+wird in 0,3 s leiser (Option `announce_music_level`, Standard 20 %), die
+Ansage darübergelegt und die Musik danach wieder lauter. Gemischt wird im
+Add-on selbst, also für jede Ausgabe gleich: Mini-PC-Lautsprecher, Browser
+und andere Lautsprecher bekommen einen durchgehenden Stream – nichts wird
+gestoppt oder neu gestartet.
+
+Mehrere Ansagen kommen nacheinander, `navigation` vor `hinweis` vor `info`.
+Die Sprache erzeugt die Sprachausgabe (TTS) von Home Assistant.
+
+Spielt gerade nichts (Radio aus und kein Player am Stream), schlägt die
+Aktion fehl – Yapaia Go spricht dann wie gewohnt über `tts.speak`.
+
+```yaml
+actions:
+  - action: yapaia_beat.announce
+    data:
+      message: Der Frischwassertank ist fast leer.
+      priority: hinweis
+```
+
+Für andere Programme: `POST /api/announce?format=wav|mp3&priority=…` mit den
+Audiodaten im Body (Antwort 409, wenn niemand zuhört).
 
 ## MP3-Stream
 
