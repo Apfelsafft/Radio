@@ -90,6 +90,7 @@ function render(s) {
     $("#now-slide").hidden = false;
   } else { $("#now-slide").hidden = true; lastSlide = null; }
   $("#now-slide").onerror = () => ($("#now-slide").hidden = true);
+  if (!$("#zoom").hidden && lastSlide) $("#zoom img").src = $("#now-slide").src;
 
   const sig = s.playing && s.signal != null ? s.signal : null;
   $$("#bars i").forEach((b, i) => b.classList.toggle("on", sig != null && sig > i * 20 + 5));
@@ -312,7 +313,7 @@ const store = {
   get: (k, d) => { try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } },
   set: (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* private mode */ } },
 };
-const player = {
+const localPlayer = {
   audio: null,
   wanted: store.get("yapaia.browserAudio", false),
   blocked: false,
@@ -354,6 +355,38 @@ const player = {
   },
   get playing() { return !!(this.audio && !this.audio.paused && this.audio.src); },
 };
+
+/* Inside Home Assistant this page is an iframe that is thrown away when you
+ * open another dashboard – and the sound with it.  The Yapaia Beat
+ * integration loads a player into the main Home Assistant window (the same
+ * one the radio card uses); if it is there, we let it play, so the radio keeps
+ * running on every dashboard. */
+const HOST = (() => {
+  try {
+    if (window.parent !== window && window.parent.YapaiaBeatPlayer) return window.parent.YapaiaBeatPlayer;
+  } catch (e) { /* not Home Assistant (other origin) */ }
+  return null;
+})();
+const player = HOST ? {
+  get wanted() { return HOST.wanted; },
+  get blocked() { return HOST.blocked; },
+  get volume() { return HOST.volume; },
+  get playing() { return HOST.playing; },
+  get audio() { return HOST.audio; },
+  start() { HOST.start(); },
+  stop() { HOST.stop(); },
+  setWanted(on) {
+    if (on && HOST.wanted && HOST.playing) return; // already playing, no gap
+    HOST.setWanted(on);
+  },
+  setVolume(v) { HOST.setVolume(v); },
+} : localPlayer;
+if (HOST) {
+  HOST.ensure(); // sign the stream URL now so a tap can start it right away
+  const onHost = () => renderOutput();
+  HOST._listeners.add(onHost);
+  window.addEventListener("pagehide", () => HOST._listeners.delete(onHost));
+}
 
 function browserOnly() { return player.wanted && !(S && (S.speaker || (S.local_output && S.local_audio))); }
 
@@ -439,6 +472,11 @@ $("#out-menu").addEventListener("click", (e) => {
 });
 $("#browser-unlock").onclick = () => player.start();
 
+/* DAB+ slideshow: tap to enlarge, tap again (or Esc) to close */
+$("#now-slide").addEventListener("click", () => { $("#zoom img").src = $("#now-slide").src; $("#zoom").hidden = false; });
+$("#zoom").addEventListener("click", () => ($("#zoom").hidden = true));
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") $("#zoom").hidden = true; });
+
 /* Browsers only allow sound after the user touched the page.  When the
  * page was opened with "this device" selected, the first tap anywhere
  * starts the sound – no extra button needed. */
@@ -447,7 +485,7 @@ const unlock = () => { if (player.wanted && player.blocked) player.start(); };
 
 /* lock screen / car display: station, logo and buttons via the Media Session API */
 function updateMediaSession() {
-  if (!("mediaSession" in navigator) || !S || !player.wanted) return;
+  if (HOST || !("mediaSession" in navigator) || !S || !player.wanted) return; // HOST does it itself
   const st = S.station;
   const title = S.title ? (S.artist ? `${S.artist} – ${S.title}` : S.title) : (S.radiotext || (st && st.name) || "Yapaia Beat");
   const key = [title, st && st.id, st && st.logo_url].join("|");
@@ -460,7 +498,7 @@ function updateMediaSession() {
     artwork: st ? [{ src: new URL(st.logo_url, location.href).href, sizes: "256x256" }] : [],
   });
 }
-if ("mediaSession" in navigator) {
+if (!HOST && "mediaSession" in navigator) {
   const ms = navigator.mediaSession;
   const safe = (fn) => { try { fn(); } catch (e) { /* unsupported action */ } };
   safe(() => ms.setActionHandler("play", () => { player.start(); api("api/play", {}); }));
@@ -470,7 +508,7 @@ if ("mediaSession" in navigator) {
   safe(() => ms.setActionHandler("previoustrack", () => api("api/previous", {})));
 }
 
-if (player.wanted) player.start(); // may be blocked until the first tap anywhere
+if (player.wanted && !player.playing) player.start(); // may be blocked until the first tap anywhere
 
 connect();
 loadStations();

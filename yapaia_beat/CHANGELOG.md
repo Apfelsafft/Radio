@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.5.0
+
+- Radio im Browser spielt weiter, wenn man die Add-on-Seite in der
+  Seitenleiste verlässt und zu einem anderen Dashboard wechselt (der Ton läuft
+  jetzt im Home-Assistant-Hauptfenster, wie bei der Radio-Karte)
+- Sender und Logo auf Sperrbildschirm/Autoradio werden auch ohne Radio-Karte
+  auf dem Bildschirm aktualisiert
+- DAB+-Slideshow antippen = groß anzeigen (Add-on-Seite und Radio-Karte)
+
 ## 1.4.0
 
 - Ausgabe-Auswahl wie bei Spotify: Dieses Gerät, Mini-PC, beides – oder jeder
