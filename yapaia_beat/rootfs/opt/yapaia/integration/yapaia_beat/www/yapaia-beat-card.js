@@ -10,7 +10,8 @@
  *   show_output: true                                # optional, output picker (Mini-PC / this device / HA speakers)
  */
 
-const CARD_VERSION = "1.4.0";
+const CARD_VERSION = "1.5.0";
+const STREAM_PATH = "/api/yapaia_beat/stream";
 
 const ICONS = {
   speaker: "M17 2H7a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2zm-5 2a2 2 0 1 1 0 4 2 2 0 0 1 0-4zm0 16a4 4 0 1 1 0-8 4 4 0 0 1 0 8zm0-6a2 2 0 1 0 0 4 2 2 0 0 0 0-4z",
@@ -32,8 +33,10 @@ const svg = (d) => `<svg viewBox="0 0 24 24"><path d="${d}"/></svg>`;
 /*
  * Plays the radio in this browser: the integration proxies the add-on's MP3
  * stream at /api/yapaia_beat/stream; <audio> can't send auth headers, so we
- * use a signed URL.  One player per browser tab, shared by all cards; the
- * choice is remembered per device.
+ * use a signed URL.  One player per browser tab, shared by all cards and by
+ * the add-on page in the side bar (which runs in an iframe and would lose its
+ * sound when you switch to another dashboard); the choice is remembered per
+ * device.
  */
 const BrowserPlayer = {
   audio: null,
@@ -61,6 +64,15 @@ const BrowserPlayer = {
       this._signing = false;
     }
   },
+  _hassEl() {
+    const el = document.querySelector("home-assistant");
+    return el && el.hass;
+  },
+  /* get a signed stream URL without a card on the screen (add-on page) */
+  ensure() {
+    const hass = this._hassEl() || this._hass;
+    if (hass) this.prepare(hass, STREAM_PATH);
+  },
   el() {
     if (!this.audio) {
       const a = (this.audio = new Audio());
@@ -77,7 +89,7 @@ const BrowserPlayer = {
     return this.audio;
   },
   start() {
-    if (!this.url) return;
+    if (!this.url) { this.ensure(); return; } // starts once the URL is signed
     const a = this.el();
     // no cache buster: extra query parameters would invalidate the signature
     a.removeAttribute("src");
@@ -94,7 +106,18 @@ const BrowserPlayer = {
   setWanted(on) {
     this.wanted = on;
     try { localStorage.setItem("yapaia-beat.browser", on ? "1" : "0"); } catch (e) { /* ignore */ }
-    if (on) this.start(); else { this.blocked = false; this.stop(); }
+    if (on) { this._watch(); if (!this.playing) this.start(); } else { this.blocked = false; this.stop(); }
+  },
+  /* keep the lock screen / car display up to date on every dashboard */
+  _watch() {
+    if (this._watchTimer) return;
+    this._watchTimer = setInterval(() => {
+      const hass = this._hassEl();
+      if (!this.wanted || !hass) return;
+      const id = this._entity || Object.keys(hass.states).find((e) => e.startsWith("media_player.yapaia_beat"));
+      const st = id && hass.states[id];
+      if (st) { this._entity = id; this.updateSession(st.attributes, hass); }
+    }, 3000);
   },
   setVolume(v) {
     this.volume = v;
@@ -102,7 +125,10 @@ const BrowserPlayer = {
     if (this.audio) this.audio.volume = v / 100;
   },
   get playing() { return !!(this.audio && !this.audio.paused && this.audio.src); },
-  _notify() { this._listeners.forEach((fn) => fn()); },
+  _notify() {
+    // listeners of a closed add-on page may be dead – drop them
+    this._listeners.forEach((fn) => { try { fn(); } catch (e) { this._listeners.delete(fn); } });
+  },
   updateSession(a, hass) {
     // station + logo on the lock screen / car display (Android, iOS)
     if (!("mediaSession" in navigator) || !this.wanted) return;
@@ -130,6 +156,24 @@ const BrowserPlayer = {
   },
 };
 window.YapaiaBeatPlayer = BrowserPlayer;
+if (BrowserPlayer.wanted) BrowserPlayer._watch();
+
+/* DAB+ slideshow in full size (tap again or Esc to close). Lives on
+ * document.body so no dashboard layout can clip it. */
+function showZoom(src) {
+  if (!src) return;
+  const box = document.createElement("div");
+  box.style.cssText = "position:fixed;inset:0;z-index:10000;background:#000d;display:flex;align-items:center;justify-content:center;cursor:zoom-out;padding:16px;box-sizing:border-box";
+  const img = document.createElement("img");
+  img.src = src;
+  img.style.cssText = "max-width:100%;max-height:100%;width:min(100%,960px);object-fit:contain;border-radius:12px;box-shadow:0 10px 40px #000";
+  box.appendChild(img);
+  const close = () => { box.remove(); document.removeEventListener("keydown", onKey); };
+  const onKey = (e) => { if (e.key === "Escape") close(); };
+  box.addEventListener("click", close);
+  document.addEventListener("keydown", onKey);
+  document.body.appendChild(box);
+}
 
 // Browsers only allow sound after a tap: if "this device" was chosen
 // earlier, the first tap anywhere on the dashboard starts it.
@@ -289,6 +333,8 @@ class YapaiaBeatCard extends HTMLElement {
     this._el.logo.onerror = () => { this._el.logo.style.visibility = "hidden"; };
     this._el.logo.onload = () => { this._el.logo.style.visibility = "visible"; };
     this._el.slide.onerror = () => { this._el.slide.hidden = true; };
+    this._el.slide.onclick = () => showZoom(this._el.slide.src);
+    this._el.slide.title = "Vergrößern";
     this._built = true;
     BrowserPlayer._entity = this._config.entity;
     if (!this._onPlayer) {
@@ -435,7 +481,7 @@ YapaiaBeatCard.styles = `
   .display { display: flex; gap: 12px; align-items: stretch; background: #0008; border-radius: 12px; padding: 10px; box-shadow: inset 0 0 10px #000c; }
   .logo-wrap { flex: 0 0 auto; width: 92px; height: 92px; border-radius: 10px; background: #fff1; display: grid; place-items: center; overflow: hidden; }
   .logo { width: 100%; height: 100%; object-fit: contain; }
-  .slide { flex: 0 0 auto; width: 92px; height: 92px; object-fit: cover; border-radius: 10px; }
+  .slide { flex: 0 0 auto; width: 92px; height: 92px; object-fit: cover; border-radius: 10px; cursor: zoom-in; }
   .lcd { flex: 1; min-width: 0; background: var(--lcd-bg); border-radius: 8px; padding: 8px 10px; color: var(--lcd-fg);
          font-family: "DejaVu Sans Mono", "Courier New", monospace; text-shadow: 0 0 6px var(--lcd-glow); display: flex; flex-direction: column; justify-content: center; gap: 3px; }
   .yb:not(.on) .lcd { opacity: .6; }

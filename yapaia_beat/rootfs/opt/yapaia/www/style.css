@@ -33,7 +33,10 @@ main { max-width: 980px; margin: 0 auto; padding: 0 16px 24px; }
 .now { display: grid; grid-template-columns: 200px 1fr; gap: 22px; }
 .now-art { position: relative; }
 .now-art img { width: 200px; height: 200px; object-fit: contain; border-radius: 16px; background: #fff1; }
-#now-slide { margin-top: 10px; height: auto; max-height: 150px; object-fit: cover; }
+#now-slide { margin-top: 10px; height: auto; max-height: 150px; object-fit: cover; cursor: zoom-in; }
+#zoom { position: fixed; inset: 0; z-index: 50; background: #000d; display: flex; align-items: center; justify-content: center; padding: 16px; cursor: zoom-out; }
+#zoom[hidden] { display: none; }
+#zoom img { max-width: 100%; max-height: 100%; width: min(100%, 960px); object-fit: contain; border-radius: 12px; box-shadow: 0 10px 40px #000; }
 .now-state { color: var(--accent2); font-size: 12px; text-transform: uppercase; letter-spacing: 2px; }
 .now-info h2 { margin: 2px 0 2px; font-size: 28px; }
 .now-meta { color: var(--muted); font-size: 13px; min-height: 18px; }

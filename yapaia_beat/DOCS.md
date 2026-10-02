@@ -220,6 +220,14 @@ Lautsprechers. Der Lautsprecher bekommt eine signierte Adresse von Home
 Assistant (keine Portfreigabe nötig); dafür muss unter *Einstellungen → System
 → Netzwerk* eine im Heimnetz erreichbare URL stehen (Standard).
 
+Der Ton auf „Dieses Gerät" läuft weiter, wenn du die Add-on-Seite verlässt
+und zu einem anderen Dashboard wechselst – nur Neuladen oder Schließen von Home
+Assistant beendet ihn. (Dafür muss die Integration eingerichtet sein; die
+Add-on-Seite über Port 8099 ohne Home Assistant spielt nur, solange sie offen
+ist.)
+
+Die DAB+-Slideshow lässt sich antippen, um sie groß anzuzeigen.
+
 Die Auswahl „Dieses Gerät" wird pro Gerät/Browser gespeichert, die übrigen
 Ausgaben gelten für alle. Der Mini-PC lässt sich zusätzlich über
 `switch.yapaia_beat_local_output` schalten (z. B. in einer Automation, wenn das
