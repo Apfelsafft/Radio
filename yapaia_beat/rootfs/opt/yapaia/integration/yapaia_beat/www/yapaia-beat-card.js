@@ -10,7 +10,7 @@
  *   show_output: true                                # optional, output picker (Mini-PC / this device / HA speakers)
  */
 
-const CARD_VERSION = "1.6.4";
+const CARD_VERSION = "1.6.5";
 const STREAM_PATH = "/api/yapaia_beat/stream";
 
 const ICONS = {
@@ -47,6 +47,7 @@ const BrowserPlayer = {
   blocked: false,
   _retry: null,
   _eigen: 0, // when we started/stopped the <audio> ourselves
+  _ruhigBis: 0, // no catching up before this (after a stall)
   _ruhe: false, // the radio is stopped – no sound wanted right now
   _lage: null, // last seen { aktiv, station } of the radio
   _ansage: 0, // another Yapaia module speaks in this browser since …
@@ -87,6 +88,13 @@ const BrowserPlayer = {
         this._retry = setTimeout(() => this.start(), 2000);
       };
       a.addEventListener("error", again);
+      // a stall: stop catching up – if it happened while speeding, for a minute
+      const stockt = () => {
+        this._ruhigBis = Date.now() + (a.playbackRate !== 1 ? 60000 : 10000);
+        a.playbackRate = 1;
+      };
+      a.addEventListener("waiting", stockt);
+      a.addEventListener("stalled", stockt);
       a.addEventListener("ended", again);
       // iPad/iPhone pause our <audio> when another app or tab speaks (e.g.
       // Yapaia Go's voice) and do not resume it.  Bring the sound back –
@@ -134,6 +142,22 @@ const BrowserPlayer = {
       this._retry = setTimeout(() => this.start(), 300);
     }
   },
+  /* Live radio: the browser keeps several seconds of the stream in stock,
+   * and every announcement mixed in by Beat came that much later (~6 s).
+   * Catch up gently: never seek (1.6.3 did – the stock ran dry and the sound
+   * broke up), only play 5 % faster (pitch kept) while more than 2 s are in
+   * stock, back to normal below 1 s.  Hands off while starting, after any
+   * stall, and for a minute if a stall happened while speeding. */
+  _aufholen() {
+    const a = this.audio;
+    if (!a || !a.buffered || !a.buffered.length) return;
+    const jetzt = Date.now();
+    const normal = () => { if (a.playbackRate !== 1) a.playbackRate = 1; };
+    if (a.paused || a.readyState < 3 || jetzt - this._eigen < 8000 || jetzt < this._ruhigBis) { normal(); return; }
+    const lag = a.buffered.end(a.buffered.length - 1) - a.currentTime;
+    if (lag > 2 && a.playbackRate === 1) { a.preservesPitch = true; a.playbackRate = 1.05; }
+    else if (lag < 1) normal();
+  },
   _spricht() { return this._ansage > 0 && Date.now() - this._ansage < 30000; },
   _syncState(st) {
     this.sync(st.state === "playing" || st.state === "buffering", st.attributes.station_id || st.attributes.station_name);
@@ -157,6 +181,7 @@ const BrowserPlayer = {
     this._watchTimer = setInterval(() => {
       const hass = this._hassEl();
       if (!this.wanted) return;
+      this._aufholen();
       if (!hass) return;
       const id = this._entity || Object.keys(hass.states).find((e) => e.startsWith("media_player.yapaia_beat"));
       const st = id && hass.states[id];

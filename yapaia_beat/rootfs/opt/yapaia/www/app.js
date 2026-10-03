@@ -323,6 +323,7 @@ const localPlayer = {
   volume: store.get("yapaia.browserVolume", 80),
   _retry: null,
   _eigen: 0, // when we started/stopped the <audio> ourselves
+  _ruhigBis: 0, // no catching up before this (after a stall)
   _ruhe: false, // the radio is stopped – no sound wanted right now
   _lage: null, // last seen { aktiv, station } of the radio
   _ansage: 0,
@@ -336,6 +337,13 @@ const localPlayer = {
         this._retry = setTimeout(() => this.start(), 2000);
       };
       a.addEventListener("error", again);
+      // a stall: stop catching up – if it happened while speeding, for a minute
+      const stockt = () => {
+        this._ruhigBis = Date.now() + (a.playbackRate !== 1 ? 60000 : 10000);
+        a.playbackRate = 1;
+      };
+      a.addEventListener("waiting", stockt);
+      a.addEventListener("stalled", stockt);
       a.addEventListener("ended", again);
       // iPad/iPhone pause our <audio> when another app or tab speaks (e.g.
       // Yapaia Go's voice) and do not resume it.  Bring the sound back –
@@ -346,6 +354,7 @@ const localPlayer = {
         this._retry = setTimeout(() => { if (this.wanted && !this._ruhe && a.paused && !this._spricht()) this.start(); }, 1000);
       });
       a.addEventListener("playing", () => { this.blocked = false; renderOutput(); });
+      setInterval(() => this._aufholen(), 1000);
     }
     return this.audio;
   },
@@ -368,6 +377,22 @@ const localPlayer = {
    * this, "stop" played on for ~5 s and a new station began only after the
    * old buffer had run out.  So: stop at once, and (re)connect at the live
    * edge when the radio starts or the station changes. */
+  /* Live radio: the browser keeps several seconds of the stream in stock,
+   * and every announcement mixed in by Beat came that much later (~6 s).
+   * Catch up gently: never seek (1.6.3 did – the stock ran dry and the sound
+   * broke up), only play 5 % faster (pitch kept) while more than 2 s are in
+   * stock, back to normal below 1 s.  Hands off while starting, after any
+   * stall, and for a minute if a stall happened while speeding. */
+  _aufholen() {
+    const a = this.audio;
+    if (!a || !a.buffered || !a.buffered.length) return;
+    const jetzt = Date.now();
+    const normal = () => { if (a.playbackRate !== 1) a.playbackRate = 1; };
+    if (a.paused || a.readyState < 3 || jetzt - this._eigen < 8000 || jetzt < this._ruhigBis) { normal(); return; }
+    const lag = a.buffered.end(a.buffered.length - 1) - a.currentTime;
+    if (lag > 2 && a.playbackRate === 1) { a.preservesPitch = true; a.playbackRate = 1.05; }
+    else if (lag < 1) normal();
+  },
   _spricht() { return this._ansage > 0 && Date.now() - this._ansage < 30000; },
   sync(aktiv, station) {
     if (!this.wanted) { this._lage = null; return; }

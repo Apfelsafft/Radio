@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.6.5
+
+- **Ansagen kommen nach einer Weile früher:** Der Browser hält einige
+  Sekunden Radio vorrätig – um so viel kam auch jede Ansage zu spät (~6 s;
+  die Sprache selbst braucht nur Bruchteile einer Sekunde). Jetzt spielt der
+  Browser das Radio 5 % schneller (Tonhöhe bleibt), solange mehr als 2 s
+  vorrätig sind, und wieder normal unter 1 s. Kein Springen wie in 1.6.3;
+  nach dem Start und nach jedem Stocken wird nicht eingegriffen
+
 ## 1.6.4
 
 - **Ton im Browser wieder stabil:** Gemeldet nach 1.6.3: „spielt ganz kurz
