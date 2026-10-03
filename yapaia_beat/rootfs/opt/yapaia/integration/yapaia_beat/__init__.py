@@ -92,16 +92,24 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         Meant for the other Yapaia modules (Yapaia Go's navigation voice …) and
         automations.  Fails when nobody would hear it, so the caller can fall
         back to ``tts.speak``."""
-        coords = _coordinators(hass)
-        if not coords:
-            raise HomeAssistantError("Yapaia Beat ist nicht eingerichtet")
-        audio, fmt = await tts_audio(
-            hass, call.data["message"], call.data.get("engine"), call.data.get("language")
-        )
-        res = await coords[0].send_audio(
-            "/api/announce", audio, {"format": fmt, "priority": call.data.get("priority", "hinweis")}
-        )
-        return {"seconds": res.get("seconds")}
+        try:
+            coords = _coordinators(hass)
+            if not coords:
+                raise HomeAssistantError("Yapaia Beat ist nicht eingerichtet")
+            audio, fmt = await tts_audio(
+                hass, call.data["message"], call.data.get("engine"), call.data.get("language")
+            )
+            res = await coords[0].send_audio(
+                "/api/announce", audio, {"format": fmt, "priority": call.data.get("priority", "hinweis")}
+            )
+        except Exception as err:  # noqa: BLE001 – TTS engines fail in their own ways
+            if not call.return_response:
+                raise
+            # A caller that asks for the response (Yapaia Go) gets the reason
+            # in plain words instead of a bare HTTP 500.
+            _LOGGER.warning("Yapaia Beat announcement failed: %s", err)
+            return {"ok": False, "error": str(err) or err.__class__.__name__}
+        return {"ok": True, "seconds": res.get("seconds")}
 
     hass.services.async_register(
         DOMAIN,

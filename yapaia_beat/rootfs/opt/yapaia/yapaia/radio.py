@@ -273,7 +273,9 @@ class Radio:
             return None
         if self.state in ("playing", "following") and self.audio.local and self.audio.local_enabled:
             return None
-        return "Yapaia Beat spielt gerade nicht"
+        if self.state not in ("playing", "following"):
+            return "Yapaia Beat spielt gerade nicht"
+        return "Niemand hört Yapaia Beat gerade zu (kein Browser oder Lautsprecher am Stream, Mini-PC-Lautsprecher aus)"
 
     # ------------------------------------------------------------------ standby
     def _listening(self) -> bool:

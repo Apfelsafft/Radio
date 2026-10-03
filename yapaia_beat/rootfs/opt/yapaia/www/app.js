@@ -393,32 +393,61 @@ const localPlayer = {
  * integration loads a player into the main Home Assistant window (the same
  * one the radio card uses); if it is there, we let it play, so the radio keeps
  * running on every dashboard. */
-const HOST = (() => {
+function findHost() {
   try {
     if (window.parent !== window && window.parent.YapaiaBeatPlayer) return window.parent.YapaiaBeatPlayer;
   } catch (e) { /* not Home Assistant (other origin) */ }
   return null;
-})();
-const player = HOST ? {
-  get wanted() { return HOST.wanted; },
-  get blocked() { return HOST.blocked; },
-  get volume() { return HOST.volume; },
-  get playing() { return HOST.playing; },
-  get audio() { return HOST.audio; },
-  start() { HOST.start(); },
-  stop() { HOST.stop(); },
-  setWanted(on) {
-    if (on && HOST.wanted && HOST.playing) return; // already playing, no gap
-    HOST.setWanted(on);
-  },
-  setVolume(v) { HOST.setVolume(v); },
-} : localPlayer;
-if (HOST) {
+}
+let HOST = findHost();
+function connectHost() {
   HOST.ensure(); // sign the stream URL now so a tap can start it right away
   const onHost = () => renderOutput();
   HOST._listeners.add(onHost);
   window.addEventListener("pagehide", () => HOST._listeners.delete(onHost));
 }
+if (HOST) connectHost();
+else {
+  // The integration loads the player into every dashboard.  If it is missing
+  // in this Home Assistant window (e.g. the page was loaded before the
+  // integration), load it ourselves – otherwise the sound would stop as soon
+  // as you leave this page.
+  try {
+    const doc = window.parent !== window ? window.parent.document : null;
+    if (doc && !doc.querySelector("script[data-yapaia-beat-player]")) {
+      const sc = doc.createElement("script");
+      sc.type = "module";
+      sc.src = "/yapaia_beat/yapaia-beat-card.js";
+      sc.dataset.yapaiaBeatPlayer = "1";
+      sc.onload = () => {
+        const h = findHost();
+        if (!h) return;
+        const lief = localPlayer.wanted && localPlayer.playing;
+        if (localPlayer.wanted) { localPlayer.stop(); localPlayer.wanted = false; }
+        HOST = h;
+        connectHost();
+        if (lief) HOST.setWanted(true); // may need a tap (browser rules) – the hint says so
+        renderOutput();
+      };
+      doc.head.appendChild(sc);
+    }
+  } catch (e) { /* other origin: stand-alone page */ }
+}
+const player = {
+  get wanted() { return HOST ? HOST.wanted : localPlayer.wanted; },
+  get blocked() { return HOST ? HOST.blocked : localPlayer.blocked; },
+  get volume() { return HOST ? HOST.volume : localPlayer.volume; },
+  get playing() { return HOST ? HOST.playing : localPlayer.playing; },
+  get audio() { return HOST ? HOST.audio : localPlayer.audio; },
+  start() { if (HOST) HOST.start(); else localPlayer.start(); },
+  stop() { if (HOST) HOST.stop(); else localPlayer.stop(); },
+  setWanted(on) {
+    if (!HOST) { localPlayer.setWanted(on); return; }
+    if (on && HOST.wanted && HOST.playing) return; // already playing, no gap
+    HOST.setWanted(on);
+  },
+  setVolume(v) { if (HOST) HOST.setVolume(v); else localPlayer.setVolume(v); },
+};
 
 function browserOnly() { return player.wanted && !(S && (S.speaker || (S.local_output && S.local_audio))); }
 
@@ -453,8 +482,9 @@ function renderOutput() {
   if (S.speaker_error) { hint = "⚠ " + S.speaker_error; err = true; }
   else if (player.wanted && player.blocked) hint = "Der Browser startet den Ton erst nach einem Tippen – einfach irgendwo tippen";
   else if (!S.local_audio && mode === "none") hint = "Mini-PC-Ausgabe nicht verfügbar (Audio im Add-on prüfen)";
-  else if (player.wanted && IS_IOS) hint = "Lautstärke am iPad/iPhone mit den Tasten regeln";
-  else if (player.wanted) hint = "Wiedergabe ca. 2–4 s verzögert";
+  else if (player.wanted && !HOST && window.parent !== window) hint = "Ton läuft nur auf dieser Seite – beim Wechsel zu einem anderen Dashboard hört er auf. Home Assistant einmal neu laden.";
+  else if (player.wanted && IS_IOS) hint = (HOST ? "Ton läuft auch auf anderen Dashboards weiter · " : "") + "Lautstärke am iPad/iPhone mit den Tasten regeln";
+  else if (player.wanted) hint = HOST ? "Ton läuft im Home-Assistant-Fenster weiter, auch auf anderen Dashboards (ca. 2–4 s verzögert)" : "Wiedergabe ca. 2–4 s verzögert";
   $("#out-hint").textContent = hint;
   $("#out-hint").classList.toggle("err", err);
   const vol = browserOnly() ? player.volume : S.volume;

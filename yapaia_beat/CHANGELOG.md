@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.6.2
+
+- **Ton läuft beim Dashboard-Wechsel weiter – auch wenn der Abspieler fehlte:**
+  Gemeldet: Musik startet auf der Beat-Seite, beim Wechsel zu einem anderen
+  Dashboard hört sie auf. Der Ton gehört in den Abspieler im
+  Home-Assistant-Fenster; fehlte der dort, spielte die Beat-Seite selbst – und
+  verstummte mit ihr. Jetzt lädt die Beat-Seite den Abspieler bei Bedarf
+  selbst nach. Unter der Ausgabe steht, ob der Ton beim Wechseln weiterläuft
+- **Ansagen: Fehler in Klartext** – `yapaia_beat.announce` sagt Yapaia Go
+  jetzt, warum es nicht geht (niemand hört zu, Radio aus, Sprachausgabe
+  fehlt …) statt nur „HTTP 500"
+
 ## 1.6.1
 
 - **Radio im Browser kommt nach einer Ansage zurück:** Spricht eine andere
