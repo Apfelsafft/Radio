@@ -225,7 +225,8 @@ async def players(request: web.Request) -> web.Response:
     players = data.get("players")
     if not isinstance(players, list):
         raise ValueError("players fehlt")
-    _radio(request).set_players(players)
+    ma = data.get("music_assistant")
+    _radio(request).set_players(players, ma if isinstance(ma, bool) else None)
     if "error" in data:
         _radio(request).set_speaker_error(data["error"])
     return _ok()

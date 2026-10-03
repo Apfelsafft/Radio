@@ -281,8 +281,20 @@ actions:
 ### Mit Music Assistant
 
 Ist Music Assistant installiert, als Ausgabe von Beat einfach den Player von
-Music Assistant wählen (er steht in der Ausgabe-Liste wie jeder andere
-Lautsprecher). Ansagen gehen dann direkt an Music Assistant: die Musik wird
+Music Assistant wählen (er steht in der Ausgabe-Liste mit 🎵 und dem Zusatz
+„Music Assistant“).
+
+Damit er dort erscheint, braucht es zweierlei:
+
+1. Music Assistant als **Integration** in Home Assistant (Einstellungen →
+   Geräte & Dienste → Music Assistant) – das Add-on allein reicht nicht.
+2. In Music Assistant je Player: Einstellungen → Wiedergabegeräte → Player
+   wählen → **„Dieses Wiedergabegerät für Home Assistant freigeben“**
+   einschalten und speichern.
+
+Der Web-Player von Music Assistant („Web (Chrome on iPad)“) spielt nur,
+solange die Seite von Music Assistant in diesem Browser offen ist. Für das
+Fahrzeug eignen sich feste Lautsprecher (Snapcast, Cast, Sonos …) besser. Ansagen gehen dann direkt an Music Assistant: die Musik wird
 kurz pausiert bzw. bei Snapcast und Sonos leiser gemischt und läuft danach
 weiter – ohne die Verzögerung des Streams. Die Antwort von
 `yapaia_beat.announce` sagt, welcher Weg genommen wurde (`weg`:

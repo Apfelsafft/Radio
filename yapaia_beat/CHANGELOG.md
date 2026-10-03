@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.7.1
+
+- **Music Assistant sichtbar:** Unter „Ausgabe“ tragen Player von Music
+  Assistant 🎵 und den Zusatz „Music Assistant“. Gibt es keinen, steht dort,
+  warum: Music Assistant fehlt als Integration in Home Assistant, oder es
+  gibt seine Player nicht an Home Assistant weiter (in Music Assistant je
+  Player „Dieses Wiedergabegerät für Home Assistant freigeben“). Spielt das
+  Radio über Music Assistant, sagt das der Hinweis unter der Ausgabe
+- Das Medien-Gerät `media_player.yapaia_beat` meldet je Player, ob er zu
+  Music Assistant gehört – Yapaia Go zeigt damit, welchen Weg seine Ansagen
+  nehmen
+
 ## 1.7.0
 
 - **Music Assistant:** Spielt das Radio auf einem Music-Assistant-Player
