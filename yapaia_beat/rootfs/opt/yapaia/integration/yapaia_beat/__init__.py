@@ -97,6 +97,16 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
             coords = _coordinators(hass)
             if not coords:
                 raise HomeAssistantError("Yapaia Beat ist nicht eingerichtet")
+            # Spielt das Radio auf einem Music-Assistant-Player, übernimmt der
+            # die Ansage selbst: Musik leiser bzw. kurz pausiert, danach weiter
+            # -- ohne den Vorrat des Streams, also ohne Verzögerung.
+            speaker = (coords[0].data or {}).get("speaker")
+            if speaker and ansage_lautsprecher(hass, speaker):
+                beginn = time.monotonic()
+                await sprich_auf_lautsprecher(
+                    hass, speaker, call.data["message"], call.data.get("engine"), call.data.get("language")
+                )
+                return {"ok": True, "weg": "lautsprecher", "speaker": speaker, "tts_s": round(time.monotonic() - beginn, 2)}
             beginn = time.monotonic()
             audio, fmt = await tts_audio(
                 hass, call.data["message"], call.data.get("engine"), call.data.get("language")
@@ -114,7 +124,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
             return {"ok": False, "error": str(err) or err.__class__.__name__}
         # tts_s: how long Home Assistant took to render the voice – the part
         # of the delay that is not the browser's buffer
-        return {"ok": True, "seconds": res.get("seconds"), "tts_s": tts_s}
+        return {"ok": True, "weg": "gemischt", "seconds": res.get("seconds"), "tts_s": tts_s}
 
     hass.services.async_register(
         DOMAIN,
@@ -180,6 +190,36 @@ async def tts_audio(hass: HomeAssistant, message: str, engine: str | None, langu
             continue
         return data, ext
     raise HomeAssistantError("Sprachausgabe fehlgeschlagen")  # pragma: no cover
+
+
+def ansage_lautsprecher(hass: HomeAssistant, entity_id: str) -> bool:
+    """Ein Music-Assistant-Player: der macht Ansagen selbst (Musik pausieren
+    bzw. bei Snapcast/Sonos absenken, danach weiter).  Andere Player (z. B.
+    Chromecast) ersetzen den Radio-Stream – dort mischt Beat weiter selbst."""
+    state = hass.states.get(entity_id)
+    return bool(state and "mass_player_type" in state.attributes)
+
+
+async def sprich_auf_lautsprecher(
+    hass: HomeAssistant, entity_id: str, message: str, engine: str | None, language: str | None
+) -> None:
+    from homeassistant.components import tts
+
+    engine = engine or tts.async_default_engine(hass)
+    if not engine:
+        raise HomeAssistantError("Keine Sprachausgabe (TTS) in Home Assistant eingerichtet")
+    language = tts_language(hass, engine, language)
+    await hass.services.async_call(
+        "tts",
+        "speak",
+        {
+            "entity_id": engine,
+            "media_player_entity_id": entity_id,
+            "message": message,
+            **({"language": language} if language else {}),
+        },
+        blocking=True,
+    )
 
 
 def tts_language(hass: HomeAssistant, engine: str, language: str | None) -> str | None:
