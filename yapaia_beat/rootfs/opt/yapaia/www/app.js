@@ -54,6 +54,9 @@ let lastText = "", lastLogo = "", lastSlide = null, lastFavKey = "";
 function render(s) {
   const prevCount = S ? S.station_count : null;
   S = s;
+  // stand-alone page (no player in the Home Assistant window): follow stop /
+  // start / station changes at once instead of playing out the buffer
+  if (!HOST) localPlayer.sync(["playing", "tuning", "following"].includes(s.state), s.station && s.station.id);
   const st = s.station;
   const states = { idle: "Bereit", tuning: "Stimme ab …", playing: "Läuft", scanning: "Suchlauf", following: "Senderverfolgung", standby: "Standby", error: "Fehler" };
   $("#now-state").textContent = states[s.state] || s.state;
@@ -319,6 +322,10 @@ const localPlayer = {
   blocked: false,
   volume: store.get("yapaia.browserVolume", 80),
   _retry: null,
+  _eigen: 0, // when we started/stopped the <audio> ourselves
+  _ruhe: false, // the radio is stopped – no sound wanted right now
+  _lage: null, // last seen { aktiv, station } of the radio
+  _ansage: 0,
   el() {
     if (!this.audio) {
       const a = (this.audio = new Audio());
@@ -330,12 +337,22 @@ const localPlayer = {
       };
       a.addEventListener("error", again);
       a.addEventListener("ended", again);
+      // iPad/iPhone pause our <audio> when another app or tab speaks (e.g.
+      // Yapaia Go's voice) and do not resume it.  Bring the sound back –
+      // unless we paused it ourselves.
+      a.addEventListener("pause", () => {
+        if (!this.wanted || this._ruhe || !a.src || Date.now() - this._eigen < 1500 || this._spricht()) return;
+        clearTimeout(this._retry);
+        this._retry = setTimeout(() => { if (this.wanted && !this._ruhe && a.paused && !this._spricht()) this.start(); }, 1000);
+      });
       a.addEventListener("playing", () => { this.blocked = false; renderOutput(); });
     }
     return this.audio;
   },
   start() {
     const a = this.el();
+    this._eigen = Date.now();
+    this._ruhe = false;
     a.src = `stream.mp3?t=${Date.now()}`;
     a.volume = this.volume / 100;
     const p = a.play();
@@ -343,7 +360,22 @@ const localPlayer = {
   },
   stop() {
     clearTimeout(this._retry);
+    this._eigen = Date.now();
     if (this.audio) { this.audio.pause(); this.audio.removeAttribute("src"); this.audio.load(); }
+  },
+  /* The radio itself was stopped / started / switched (seen in its state).
+   * The browser keeps several seconds of the stream in its buffer – without
+   * this, "stop" played on for ~5 s and a new station began only after the
+   * old buffer had run out.  So: stop at once, and (re)connect at the live
+   * edge when the radio starts or the station changes. */
+  _spricht() { return this._ansage > 0 && Date.now() - this._ansage < 30000; },
+  sync(aktiv, station) {
+    if (!this.wanted) { this._lage = null; return; }
+    const vorher = this._lage;
+    this._lage = { aktiv, station };
+    if (!vorher) return;
+    if (vorher.aktiv && !aktiv) { this.stop(); this._ruhe = true; return; }
+    if (aktiv && (!vorher.aktiv || (station && station !== vorher.station))) this.start();
   },
   setWanted(on) {
     this.wanted = on; store.set("yapaia.browserAudio", on);
