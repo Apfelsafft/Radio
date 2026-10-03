@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.6.4
+
+- **Ton im Browser wieder stabil:** Gemeldet nach 1.6.3: „spielt ganz kurz
+  und bricht dann wieder ab". Das Aufholen zum Live-Ton sprang im Vorrat des
+  Browsers nach vorn – der Vorrat lief leer, der Browser stockte, füllte neu
+  und wurde wieder übersprungen. Das Aufholen ist wieder entfernt; die
+  deutsche Aussprache der Ansagen aus 1.6.3 bleibt
+
 ## 1.6.3
 
 - **Ansagen auf Deutsch statt mit Akzent:** Ohne Sprachangabe nahm die
