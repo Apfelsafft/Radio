@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.8.0
+
+- **Der Browser als Player von Music Assistant:** Unter „Ausgabe“ gibt es
+  den Schalter „Music Assistant in diesem Browser“. Der Browser meldet sich
+  dann als „Yapaia iPad“ (bzw. iPhone, Android …) bei Music Assistant an –
+  aus dem Home-Assistant-Fenster heraus, darum spielt er auch beim Wechsel
+  des Dashboards weiter (anders als der Web-Player in der Seite von Music
+  Assistant). Music Assistant fragt einmal, ob es ihn zulassen soll; danach
+  steht er in der Ausgabe-Liste. So läuft das Radio auch ohne Cast-Geräte
+  über Music Assistant, mit kurzem Puffer, und Ansagen von Yapaia Go mischt
+  Music Assistant ein. Beat zeigt unter dem Schalter, wie weit die
+  Anmeldung ist und was noch zu tun ist
+- Nutzt die offizielle Bibliothek `sendspin-js` 5.0.0 (dieselbe wie Music
+  Assistant selbst), mitgeliefert in der Karte
+
 ## 1.7.1
 
 - **Music Assistant sichtbar:** Unter „Ausgabe“ tragen Player von Music

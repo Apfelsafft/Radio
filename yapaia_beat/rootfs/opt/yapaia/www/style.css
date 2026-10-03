@@ -162,7 +162,9 @@ footer { text-align: center; color: var(--muted); font-size: 12px; padding: 16px
 .out-menu button small { color: var(--muted); font-size: 11px; }
 .out-menu button.active::after { content: "✓"; }
 .out-menu .none { color: var(--muted); font-size: 12px; padding: 6px 10px 8px; }
-#out-hint.err { color: #ff8a80; }
+#out-hint.err, #ma-hint.err { color: #ff8a80; }
+.ma-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin-top: 8px; }
+.ma-row .switch { margin-left: 0; }
 .small { font-size: 12px; }
 
 /* Landscape screens with little height (car radio 1024×600, iPad in the HA

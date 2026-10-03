@@ -57,6 +57,12 @@
           <button class="primary" id="browser-unlock" hidden>▶ Ton hier starten</button>
           <span class="muted small" id="out-hint"></span>
         </div>
+        <div class="ma-row" id="ma-row" hidden>
+          <label class="switch" title="Diesen Browser als Player bei Music Assistant anmelden">
+            <input type="checkbox" id="ma-on"><span></span> Music Assistant in diesem Browser
+          </label>
+          <span class="muted small" id="ma-hint"></span>
+        </div>
         <div class="vol-row">
           <button class="icon small" id="btn-mute" title="Stumm"><svg viewBox="0 0 24 24"><path id="mute-path" d="M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0 0 14 8v8a4.5 4.5 0 0 0 2.5-4z"/></svg></button>
           <input type="range" id="volume" min="0" max="100" value="60">

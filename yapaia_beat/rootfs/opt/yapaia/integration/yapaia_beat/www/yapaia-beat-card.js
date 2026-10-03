@@ -10,8 +10,9 @@
  *   show_output: true                                # optional, output picker (Mini-PC / this device / HA speakers)
  */
 
-const CARD_VERSION = "1.7.1";
+const CARD_VERSION = "1.8.0";
 const STREAM_PATH = "/api/yapaia_beat/stream";
+const SENDSPIN_URL = "/yapaia_beat/sendspin.js";
 
 const ICONS = {
   speaker: "M17 2H7a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2zm-5 2a2 2 0 1 1 0 4 2 2 0 0 1 0-4zm0 16a4 4 0 1 1 0-8 4 4 0 0 1 0 8zm0-6a2 2 0 1 0 0 4 2 2 0 0 0 0-4z",
@@ -227,6 +228,183 @@ const BrowserPlayer = {
 window.YapaiaBeatPlayer = BrowserPlayer;
 if (BrowserPlayer.wanted) BrowserPlayer._watch();
 
+/* This browser as a player of Music Assistant ("Sendspin").
+ *
+ * Music Assistant's own web player lives in its page and falls silent as
+ * soon as you switch to another dashboard.  This one lives in the Home
+ * Assistant window itself (like BrowserPlayer) and keeps playing on every
+ * dashboard.  It connects through Music Assistant's ingress (no extra port,
+ * no extra login: the ingress session authenticates it, exactly like Music
+ * Assistant's own page) and shows up there as "Yapaia (iPad)" – a player
+ * like any speaker: Yapaia Beat can play on it, and Music Assistant mixes
+ * Yapaia Go's announcements in without the delay of the browser stream.
+ *
+ * It tells Music Assistant honestly that it is Yapaia Beat (not Music
+ * Assistant's web player), so Music Assistant asks once to allow it. */
+const MA_SLUGS = ["d5369777_music_assistant", "d5369777_music_assistant_beta"];
+const geraetName = () => {
+  const ua = navigator.userAgent || "";
+  if (/iPad/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1)) return "iPad";
+  if (/iPhone/.test(ua)) return "iPhone";
+  if (/Android/.test(ua)) return /Mobile/.test(ua) ? "Android-Handy" : "Android-Tablet";
+  return "Browser";
+};
+const lies = (k, d) => { try { const v = localStorage.getItem(k); return v === null ? d : v; } catch (e) { return d; } };
+const schreib = (k, v) => { try { localStorage.setItem(k, v); } catch (e) { /* ignore */ } };
+// own keys: Music Assistant's page runs on the same origin and must keep its own identity
+const SS_STORAGE = {
+  getItem: (k) => lies("yapaia-beat.ss." + k, null),
+  setItem: (k, v) => schreib("yapaia-beat.ss." + k, v),
+};
+
+const MaPlayer = {
+  wanted: lies("yapaia-beat.ma", "0") === "1",
+  name: lies("yapaia-beat.ma-name", "") || "Yapaia " + geraetName(),
+  status: "aus", // aus | sucht | verbindet | wartet | bereit | spielt | fehler
+  error: "",
+  needsTap: false,
+  player: null,
+  _session: null,
+  _secure: location.protocol === "https:",
+  _timer: null,
+  _starting: false,
+  _listeners: new Set(),
+
+  _hass() { const el = document.querySelector("home-assistant"); return el && el.hass; },
+  async _sup(endpoint, method, data) {
+    const hass = this._hass();
+    if (!hass) throw new Error("Home Assistant ist noch nicht bereit.");
+    const msg = { type: "supervisor/api", endpoint, method };
+    if (data) msg.data = data;
+    return hass.callWS(msg);
+  },
+  _set(status, error = "") {
+    if (status === this.status && error === this.error) return;
+    this.status = status;
+    this.error = error;
+    this._listeners.forEach((fn) => { try { fn(); } catch (e) { this._listeners.delete(fn); } });
+  },
+  /* Music Assistant's add-on and its ingress path */
+  async _findMa() {
+    let slugs = MA_SLUGS;
+    try {
+      // admins see all add-ons – also a Music Assistant from another repository
+      const all = await this._sup("/addons", "get");
+      const found = (all && all.addons || []).filter((a) => /music_assistant/.test(a.slug)).map((a) => a.slug);
+      if (found.length) slugs = [...new Set([...found, ...MA_SLUGS])];
+    } catch (e) { /* not an admin: try the known slugs */ }
+    let stopped = null;
+    for (const slug of slugs) {
+      let info;
+      try { info = await this._sup(`/addons/${slug}/info`, "get"); } catch (e) { continue; }
+      if (info && info.ingress_url) return info.ingress_url.replace(/\/$/, "");
+      if (info) stopped = info.state;
+    }
+    throw new Error(stopped ? `Music Assistant ist nicht gestartet (${stopped}).` : "Music Assistant (Add-on) wurde nicht gefunden.");
+  },
+  async _newSession() {
+    const r = await this._sup("/ingress/session", "post");
+    if (!r || !r.session) throw new Error("Home Assistant hat keine Ingress-Sitzung geliefert.");
+    this._session = r.session;
+    this._cookie();
+  },
+  _cookie() {
+    if (this._session) document.cookie = `ingress_session=${this._session};path=/api/hassio_ingress/;SameSite=Strict${this._secure ? ";Secure" : ""}`;
+  },
+  async _keepSession() {
+    if (!this._session) return;
+    try { await this._sup("/ingress/validate_session", "post", { session: this._session }); this._cookie(); }
+    catch (e) { try { await this._newSession(); } catch (e2) { /* next round */ } }
+  },
+  async start() {
+    if (this.player || this._starting) return;
+    this._starting = true;
+    try {
+      this._set("sucht");
+      const base = await this._findMa();
+      await this._newSession();
+      this._set("verbindet");
+      const { SendspinPlayer } = await import(`${SENDSPIN_URL}?v=${CARD_VERSION}`);
+      if (!this.wanted) return;
+      this.player = new SendspinPlayer({
+        baseUrl: location.origin + base,
+        clientName: this.name,
+        productName: "Yapaia Beat",
+        storage: SS_STORAGE,
+        correctionMode: "quality-local", // one device, best sound
+        requiredLeadTimeMs: 250,
+        minBufferMs: 500,
+        reconnect: {
+          maxDelayMs: 15000,
+          // a reconnect needs a valid ingress cookie (it may have expired meanwhile)
+          onReconnecting: () => { this._cookie(); this._keepSession(); },
+        },
+        onStateChange: () => this._check(),
+      });
+      await this.player.connect();
+      this._timer = setInterval(() => { this._check(); }, 1000);
+      this._sessionTimer = setInterval(() => this._keepSession(), 60000);
+      this._check();
+    } catch (err) {
+      this._set("fehler", (err && err.message) || String(err));
+      this._teardown();
+      // try again later – Music Assistant may just be starting
+      clearTimeout(this._retry);
+      this._retry = setTimeout(() => { if (this.wanted) this.start(); }, 30000);
+    } finally {
+      this._starting = false;
+    }
+  },
+  _check() {
+    const p = this.player;
+    if (!p) return;
+    if (!p.isConnected) { this._set("verbindet"); return; }
+    let roles = null;
+    try { roles = p.core.protocolHandler.activeRoles; } catch (e) { /* internals changed */ }
+    if (roles && roles.size === 0) { this._set("wartet"); return; } // not yet allowed in Music Assistant
+    this._set(p.isPlaying ? "spielt" : "bereit");
+  },
+  _teardown() {
+    clearInterval(this._timer);
+    clearInterval(this._sessionTimer);
+    this._timer = this._sessionTimer = null;
+    if (this.player) { try { this.player.disconnect("user_request"); } catch (e) { /* ignore */ } }
+    this.player = null;
+  },
+  /* Sound needs a tap once per page load (iPad/iPhone, Chrome).  Only an
+   * unlock inside a tap counts; one without may or may not work. */
+  unlock(tap) {
+    if (!this.player) return;
+    try {
+      const p = this.player.unlock();
+      if (tap) this.needsTap = false;
+      if (p && p.catch) p.catch(() => { if (tap) this.needsTap = true; });
+    } catch (e) { /* ignore */ }
+    this._listeners.forEach((fn) => { try { fn(); } catch (e) { this._listeners.delete(fn); } });
+  },
+  setWanted(on) {
+    this.wanted = on;
+    schreib("yapaia-beat.ma", on ? "1" : "0");
+    clearTimeout(this._retry);
+    if (on) { this.needsTap = true; this.start().then(() => this.unlock(false)); }
+    else { this._teardown(); this._set("aus"); }
+  },
+  setName(name) {
+    const n = String(name || "").trim().slice(0, 40);
+    if (!n || n === this.name) return;
+    this.name = n;
+    schreib("yapaia-beat.ma-name", n);
+    if (this.player) { this._teardown(); this.start(); }
+  },
+};
+window.YapaiaBeatMa = MaPlayer;
+if (MaPlayer.wanted) {
+  MaPlayer.needsTap = true;
+  // wait until Home Assistant's frontend is ready
+  const los = () => (MaPlayer._hass() ? MaPlayer.start() : setTimeout(los, 1000));
+  setTimeout(los, 500);
+}
+
 /* DAB+ slideshow in full size (tap again or Esc to close). Lives on
  * document.body so no dashboard layout can clip it. */
 function showZoom(src) {
@@ -248,7 +426,10 @@ function showZoom(src) {
 // earlier, the first tap anywhere on the dashboard starts it.
 if (!window.__yapaiaUnlock) {
   window.__yapaiaUnlock = true;
-  const unlock = () => { if (BrowserPlayer.wanted && BrowserPlayer.blocked) BrowserPlayer.start(); };
+  const unlock = () => {
+    if (BrowserPlayer.wanted && BrowserPlayer.blocked) BrowserPlayer.start();
+    if (MaPlayer.wanted && MaPlayer.needsTap) MaPlayer.unlock(true);
+  };
   ["click", "touchend", "keydown"].forEach((ev) => document.addEventListener(ev, unlock, { capture: true, passive: true }));
 }
 
