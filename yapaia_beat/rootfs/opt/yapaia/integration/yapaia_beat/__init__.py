@@ -49,6 +49,9 @@ _STATION_ID = re.compile(r"^[a-z0-9-]{1,40}$")
 
 YapaiaConfigEntry = ConfigEntry[YapaiaCoordinator]
 
+# states of the add-on in which the radio is playing (and can be mixed into)
+AKTIV = ("playing", "tuning", "following")
+
 
 def _coordinators(hass: HomeAssistant) -> list[YapaiaCoordinator]:
     return list(hass.data.get(DOMAIN, {}).values())
@@ -113,11 +116,13 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
             coords = _coordinators(hass)
             if not coords:
                 raise HomeAssistantError("Yapaia Beat ist nicht eingerichtet")
-            # Spielt das Radio auf einem Music-Assistant-Player, übernimmt der
-            # die Ansage selbst: Musik leiser bzw. kurz pausiert, danach weiter
-            # -- ohne den Vorrat des Streams, also ohne Verzögerung.
+            # Beat mischt die Ansage selbst ins Radio – auch wenn es über einen
+            # Player von Music Assistant läuft (dessen Strom kommt ja von hier).
+            # Music Assistant würde das Radio für die Ansage sonst anhalten und
+            # danach neu starten; das dauerte im Test lange oder blieb stumm.
+            # Nur wenn niemand das Radio hört, spricht der Player selbst.
             speaker = (coords[0].data or {}).get("speaker")
-            if speaker and ansage_lautsprecher(hass, speaker):
+            if speaker and ansage_lautsprecher(hass, speaker) and (coords[0].data or {}).get("state") not in AKTIV:
                 beginn = time.monotonic()
                 await sprich_auf_lautsprecher(
                     hass, speaker, call.data["message"], call.data.get("engine"), call.data.get("language")

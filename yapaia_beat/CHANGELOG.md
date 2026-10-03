@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.8.1
+
+- **Ansagen über Music Assistant ohne Unterbrechung:** Läuft das Radio auf
+  einem Player von Music Assistant, mischt Beat Ansagen jetzt selbst in den
+  Strom, den Music Assistant abspielt. Bisher übernahm Music Assistant sie.
+  Dafür hielt es das Radio an, spielte einen Gong und die Ansage und
+  startete das Radio neu – im Test dauerte das lange oder es blieb stumm.
+  Music Assistant spricht nur noch selbst, wenn das Radio gerade nicht läuft
+- **„Yapaia iPad“ nach dem Wechsel stumm:** Wechselt man von „Dieses Gerät“
+  zurück zum Player von Music Assistant, gibt Beat dessen Ton im selben
+  Tippen wieder frei. Pausiert das iPad ihn, während Music Assistant spielt,
+  startet Beat ihn nach einer Sekunde wieder
+
 ## 1.8.0
 
 - **Der Browser als Player von Music Assistant:** Unter „Ausgabe“ gibt es
