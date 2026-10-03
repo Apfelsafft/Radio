@@ -10,7 +10,7 @@
  *   show_output: true                                # optional, output picker (Mini-PC / this device / HA speakers)
  */
 
-const CARD_VERSION = "1.6.5";
+const CARD_VERSION = "1.7.0";
 const STREAM_PATH = "/api/yapaia_beat/stream";
 
 const ICONS = {

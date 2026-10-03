@@ -278,6 +278,16 @@ actions:
       priority: hinweis
 ```
 
+### Mit Music Assistant
+
+Ist Music Assistant installiert, als Ausgabe von Beat einfach den Player von
+Music Assistant wählen (er steht in der Ausgabe-Liste wie jeder andere
+Lautsprecher). Ansagen gehen dann direkt an Music Assistant: die Musik wird
+kurz pausiert bzw. bei Snapcast und Sonos leiser gemischt und läuft danach
+weiter – ohne die Verzögerung des Streams. Die Antwort von
+`yapaia_beat.announce` sagt, welcher Weg genommen wurde (`weg`:
+`lautsprecher` oder `gemischt`).
+
 Für andere Programme: `POST /api/announce?format=wav|mp3&priority=…` mit den
 Audiodaten im Body (Antwort 409, wenn niemand zuhört).
 

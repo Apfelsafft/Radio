@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.7.0
+
+- **Music Assistant:** Spielt das Radio auf einem Music-Assistant-Player
+  (Ausgabe wählen → der Player von Music Assistant), übernimmt Music
+  Assistant die Ansagen von Yapaia Go und `yapaia_beat.announce`: die Musik
+  wird kurz pausiert bzw. – bei Snapcast und Sonos – leiser gemischt und
+  läuft danach weiter. Ohne den Vorrat des Streams, also ohne die
+  Verzögerung von einigen Sekunden. Bei allen anderen Ausgaben mischt Beat
+  weiter selbst
+
 ## 1.6.5
 
 - **Ansagen kommen nach einer Weile früher:** Der Browser hält einige
