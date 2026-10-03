@@ -10,7 +10,7 @@
  *   show_output: true                                # optional, output picker (Mini-PC / this device / HA speakers)
  */
 
-const CARD_VERSION = "1.8.0";
+const CARD_VERSION = "1.8.1";
 const STREAM_PATH = "/api/yapaia_beat/stream";
 const SENDSPIN_URL = "/yapaia_beat/sendspin.js";
 
@@ -362,6 +362,7 @@ const MaPlayer = {
     let roles = null;
     try { roles = p.core.protocolHandler.activeRoles; } catch (e) { /* internals changed */ }
     if (roles && roles.size === 0) { this._set("wartet"); return; } // not yet allowed in Music Assistant
+    this._wache();
     this._set(p.isPlaying ? "spielt" : "bereit");
   },
   _teardown() {
@@ -380,7 +381,27 @@ const MaPlayer = {
       if (tap) this.needsTap = false;
       if (p && p.catch) p.catch(() => { if (tap) this.needsTap = true; });
     } catch (e) { /* ignore */ }
+    // On iPad/iPhone sendspin plays through an <audio> element.  Another
+    // sound (Beat's own browser stream, "this device") pauses it, and the
+    // library's unlock only resumes the AudioContext – start it again here.
+    this._weiter();
+    this._wache();
     this._listeners.forEach((fn) => { try { fn(); } catch (e) { this._listeners.delete(fn); } });
+  },
+  _el() { try { return this.player && this.player.scheduler && this.player.scheduler.audioElement; } catch (e) { return null; } },
+  _weiter() {
+    const el = this._el();
+    if (el && el.paused && el.srcObject) { const p = el.play(); if (p && p.catch) p.catch(() => { this.needsTap = true; }); }
+  },
+  /* resume after iOS paused us – unless Beat's own browser stream plays now */
+  _wache() {
+    const el = this._el();
+    if (!el || el.__yapaiaWache) return;
+    el.__yapaiaWache = true;
+    el.addEventListener("pause", () => {
+      // only while Music Assistant is playing to us (a stop pauses it on purpose)
+      setTimeout(() => { if (this.wanted && this.player && this.player.isPlaying && !BrowserPlayer.playing) this._weiter(); }, 1000);
+    });
   },
   setWanted(on) {
     this.wanted = on;

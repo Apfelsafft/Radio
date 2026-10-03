@@ -617,6 +617,10 @@ $("#out-menu").addEventListener("click", (e) => {
   const speaker = out.startsWith("speaker:") ? out.slice(8) : null;
   // the browser starts playing right here, inside the tap (needed on iOS)
   player.setWanted(out === "browser" || out === "both");
+  // Back to the Music Assistant player of this browser: iPad/iPhone paused
+  // its sound while "this device" played – release it again inside this tap.
+  connectMa();
+  if (MA && MA.wanted && speaker) MA.unlock(true);
   api("api/settings", { local_output: out === "local" || out === "both", speaker });
   $("#out-menu").hidden = true;
   renderOutput();
