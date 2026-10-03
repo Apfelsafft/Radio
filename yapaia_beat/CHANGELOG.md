@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.6.3
+
+- **Ansagen auf Deutsch statt mit Akzent:** Ohne Sprachangabe nahm die
+  Sprachausgabe ihre Standardsprache (oft Englisch) und las den deutschen
+  Text mit Akzent. Jetzt gilt die Sprache von Home Assistant (Einstellungen
+  → System → Allgemein), passend zu dem, was die Stimme anbietet
+- **Ansagen kommen früher:** Der Browser hielt einige Sekunden Radio
+  vorrätig – um so viel kam auch jede Ansage zu spät. Jetzt holt er zum
+  aktuellen Ton auf (springt bei großem Rückstand, spielt sonst kurz etwas
+  schneller, ohne die Tonhöhe zu ändern)
+- `yapaia_beat.announce` meldet, wie lange die Sprache gebraucht hat
+  (`tts_s`)
+
 ## 1.6.2
 
 - **Ton läuft beim Dashboard-Wechsel weiter – auch wenn der Abspieler fehlte:**

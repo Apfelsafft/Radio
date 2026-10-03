@@ -346,6 +346,7 @@ const localPlayer = {
         this._retry = setTimeout(() => { if (this.wanted && !this._ruhe && a.paused && !this._spricht()) this.start(); }, 1000);
       });
       a.addEventListener("playing", () => { this.blocked = false; renderOutput(); });
+      setInterval(() => this._aufholen(), 1000);
     }
     return this.audio;
   },
@@ -368,6 +369,20 @@ const localPlayer = {
    * this, "stop" played on for ~5 s and a new station began only after the
    * old buffer had run out.  So: stop at once, and (re)connect at the live
    * edge when the radio starts or the station changes. */
+  /* Live radio: the browser keeps a few seconds of the stream in stock –
+   * that delay hit every announcement too (~7 s from tap to voice).  Catch
+   * up to the live edge: jump if far behind, else play a little faster
+   * (pitch is kept) until the stock is small. */
+  _aufholen() {
+    const a = this.audio;
+    if (!a || a.paused || !a.buffered || !a.buffered.length) return;
+    const lag = a.buffered.end(a.buffered.length - 1) - a.currentTime;
+    try {
+      if (lag > 4) { a.currentTime = a.buffered.end(a.buffered.length - 1) - 0.8; return; }
+    } catch (e) { /* not seekable: catch up by speed */ }
+    if (lag > 1.5 && a.playbackRate === 1) a.playbackRate = 1.1;
+    else if (lag < 0.7 && a.playbackRate !== 1) a.playbackRate = 1;
+  },
   _spricht() { return this._ansage > 0 && Date.now() - this._ansage < 30000; },
   sync(aktiv, station) {
     if (!this.wanted) { this._lage = null; return; }

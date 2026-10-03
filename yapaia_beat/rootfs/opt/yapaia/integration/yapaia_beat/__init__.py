@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+import time
 
 import aiohttp
 
@@ -96,9 +97,11 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
             coords = _coordinators(hass)
             if not coords:
                 raise HomeAssistantError("Yapaia Beat ist nicht eingerichtet")
+            beginn = time.monotonic()
             audio, fmt = await tts_audio(
                 hass, call.data["message"], call.data.get("engine"), call.data.get("language")
             )
+            tts_s = round(time.monotonic() - beginn, 2)
             res = await coords[0].send_audio(
                 "/api/announce", audio, {"format": fmt, "priority": call.data.get("priority", "hinweis")}
             )
@@ -109,7 +112,9 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
             # in plain words instead of a bare HTTP 500.
             _LOGGER.warning("Yapaia Beat announcement failed: %s", err)
             return {"ok": False, "error": str(err) or err.__class__.__name__}
-        return {"ok": True, "seconds": res.get("seconds")}
+        # tts_s: how long Home Assistant took to render the voice – the part
+        # of the delay that is not the browser's buffer
+        return {"ok": True, "seconds": res.get("seconds"), "tts_s": tts_s}
 
     hass.services.async_register(
         DOMAIN,
@@ -163,6 +168,7 @@ async def tts_audio(hass: HomeAssistant, message: str, engine: str | None, langu
     engine = engine or tts.async_default_engine(hass)
     if not engine:
         raise HomeAssistantError("Keine Sprachausgabe (TTS) in Home Assistant eingerichtet")
+    language = tts_language(hass, engine, language)
     wunsch = {"preferred_format": "wav", "preferred_sample_rate": 48000, "preferred_sample_channels": 1}
     for options in (wunsch, None):
         try:
@@ -174,6 +180,30 @@ async def tts_audio(hass: HomeAssistant, message: str, engine: str | None, langu
             continue
         return data, ext
     raise HomeAssistantError("Sprachausgabe fehlgeschlagen")  # pragma: no cover
+
+
+def tts_language(hass: HomeAssistant, engine: str, language: str | None) -> str | None:
+    """The language to speak in: the one asked for, else Home Assistant's own
+    (Settings → System → General) – matched to what the engine offers.
+
+    Without it the engine used its default, often English, and read the
+    German text with a funny accent."""
+    from homeassistant.util import language as language_util
+
+    wunsch = language or hass.config.language
+    try:
+        from homeassistant.components.tts import get_engine_instance
+
+        instance = get_engine_instance(hass, engine)
+        angebot = list(getattr(instance, "supported_languages", None) or [])
+    except Exception:  # noqa: BLE001 – older Home Assistant: keep what we have
+        return language
+    if not wunsch or not angebot:
+        return language
+    if wunsch in angebot:
+        return wunsch
+    treffer = language_util.matches(wunsch, angebot, country=hass.config.country)
+    return treffer[0] if treffer else language
 
 
 def output_payload(output: str) -> dict:
