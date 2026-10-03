@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.8.2
+
+- **Songtitel in Music Assistant:** Statt „stream?authSig=…“ zeigt Music
+  Assistant jetzt den laufenden Titel („Interpret - Titel“, sonst Radiotext
+  oder Sender) und als Namen „Yapaia Beat“. Der MP3-Stream liefert dafür
+  ICY-Metadaten, wie es Internetradios tun – aber nur Playern, die danach
+  fragen (Music Assistant, VLC …). Der Browser bekommt den Stream wie bisher
+
 ## 1.8.1
 
 - **Ansagen über Music Assistant ohne Unterbrechung:** Läuft das Radio auf
