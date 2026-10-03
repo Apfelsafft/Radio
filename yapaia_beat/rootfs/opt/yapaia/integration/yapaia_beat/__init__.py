@@ -20,7 +20,17 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.typing import ConfigType
 
-from .const import CARD_PATH, CARD_URL, DOMAIN, STREAM_URL, VERSION
+from .const import (
+    CARD_PATH,
+    CARD_URL,
+    DOMAIN,
+    SENDSPIN_LICENSES_PATH,
+    SENDSPIN_LICENSES_URL,
+    SENDSPIN_PATH,
+    SENDSPIN_URL,
+    STREAM_URL,
+    VERSION,
+)
 from .coordinator import YapaiaCoordinator
 from .speaker import SpeakerSync
 
@@ -47,7 +57,13 @@ def _coordinators(hass: HomeAssistant) -> list[YapaiaCoordinator]:
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     """Register the Lovelace card, image proxy views and services."""
     hass.data.setdefault(DOMAIN, {})
-    await hass.http.async_register_static_paths([StaticPathConfig(CARD_URL, str(CARD_PATH), False)])
+    await hass.http.async_register_static_paths(
+        [
+            StaticPathConfig(CARD_URL, str(CARD_PATH), False),
+            StaticPathConfig(SENDSPIN_URL, str(SENDSPIN_PATH), True),
+            StaticPathConfig(SENDSPIN_LICENSES_URL, str(SENDSPIN_LICENSES_PATH), True),
+        ]
+    )
     try:
         from homeassistant.components.frontend import add_extra_js_url
 

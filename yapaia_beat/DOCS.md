@@ -292,13 +292,38 @@ Damit er dort erscheint, braucht es zweierlei:
    wählen → **„Dieses Wiedergabegerät für Home Assistant freigeben“**
    einschalten und speichern.
 
-Der Web-Player von Music Assistant („Web (Chrome on iPad)“) spielt nur,
-solange die Seite von Music Assistant in diesem Browser offen ist. Für das
-Fahrzeug eignen sich feste Lautsprecher (Snapcast, Cast, Sonos …) besser. Ansagen gehen dann direkt an Music Assistant: die Musik wird
+Ansagen gehen dann direkt an Music Assistant: die Musik wird
 kurz pausiert bzw. bei Snapcast und Sonos leiser gemischt und läuft danach
 weiter – ohne die Verzögerung des Streams. Die Antwort von
 `yapaia_beat.announce` sagt, welcher Weg genommen wurde (`weg`:
 `lautsprecher` oder `gemischt`).
+
+#### Der Browser als Player von Music Assistant
+
+Der Web-Player von Music Assistant („Web (Chrome on iPad)“) spielt nur,
+solange die Seite von Music Assistant offen ist – wechselt man das
+Dashboard, verstummt er. Yapaia Beat bringt deshalb einen eigenen mit, der im
+Home-Assistant-Fenster selbst läuft und auf jedem Dashboard weiterspielt:
+
+1. In Beat unter der Ausgabe **„Music Assistant in diesem Browser“**
+   einschalten. Der Browser meldet sich als Player „Yapaia iPad“ (bzw.
+   iPhone, Android-Tablet, Browser) bei Music Assistant an.
+2. Music Assistant fragt einmal, ob es den Player zulassen soll: in Music
+   Assistant → Einstellungen → Wiedergabegeräte → „Yapaia iPad“ öffnen und
+   **ohne Kopplung verbinden**. Beat zeigt so lange „Music Assistant muss den
+   Player einmal zulassen“.
+3. Sobald Music Assistant ihn an Home Assistant weitergibt, steht er in der
+   Ausgabe-Liste (🎵, „dieser Browser“) – auswählen.
+
+Dann läuft das Radio über Music Assistant in diesem Browser, mit nur etwa
+einer halben Sekunde Puffer, und Ansagen von Yapaia Go mischt Music
+Assistant ein. Nach dem Neuladen von Home Assistant verlangt der Browser
+einmal ein Tippen, bevor er Ton ausgeben darf.
+
+Die Verbindung läuft über den Ingress von Music Assistant – derselbe Weg,
+den dessen eigene Seite nimmt; es braucht keinen weiteren Port und keine
+eigene Anmeldung. Gesucht wird das Add-on „Music Assistant“ (für
+Administratoren jedes Add-on mit `music_assistant` im Namen).
 
 Für andere Programme: `POST /api/announce?format=wav|mp3&priority=…` mit den
 Audiodaten im Body (Antwort 409, wenn niemand zuhört).

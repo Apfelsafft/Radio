@@ -486,6 +486,53 @@ function outputMode() {
   return local && player.wanted ? "both" : player.wanted ? "browser" : local ? "local" : "none";
 }
 
+/* The Music Assistant player of this browser (Sendspin), see the card. */
+function findMa() {
+  try {
+    if (window.parent !== window && window.parent.YapaiaBeatMa) return window.parent.YapaiaBeatMa;
+  } catch (e) { /* other origin */ }
+  return null;
+}
+let MA = null;
+function connectMa() {
+  if (MA || !(MA = findMa())) return;
+  const onMa = () => renderMa();
+  MA._listeners.add(onMa);
+  window.addEventListener("pagehide", () => MA._listeners.delete(onMa));
+}
+// a tap in this page counts for the sound in the main window, too
+document.addEventListener("click", () => { if (MA && MA.wanted && MA.needsTap) MA.unlock(true); }, { capture: true });
+
+function renderMa() {
+  connectMa();
+  const row = $("#ma-row");
+  if (!MA || !S || (!S.music_assistant && !MA.wanted)) { row.hidden = true; return; }
+  row.hidden = false;
+  $("#ma-on").checked = MA.wanted;
+  const n = "„" + MA.name + "“";
+  const eigen = (S.players || []).find((p) => p.ma && p.name === MA.name);
+  const texte = {
+    aus: `Meldet diesen Browser als Player ${n} bei Music Assistant an. Er spielt auch weiter, wenn du das Dashboard wechselst, und Ansagen von Yapaia Go kommen dort ohne Verzögerung.`,
+    sucht: "Suche Music Assistant …",
+    verbindet: "Verbinde mit Music Assistant …",
+    wartet: `Angemeldet als ${n}. Music Assistant muss den Player einmal zulassen: in Music Assistant → Einstellungen → Wiedergabegeräte → ${n} öffnen und ohne Kopplung verbinden.`,
+    bereit: eigen
+      ? (S.speaker === eigen.entity_id ? `Das Radio läuft über Music Assistant auf ${n}.` : `${n} ist bereit – oben bei „Ausgabe“ wählen.`)
+      : `${n} ist mit Music Assistant verbunden. Er erscheint bei „Ausgabe“, sobald Music Assistant ihn an Home Assistant freigibt (Wiedergabegeräte → ${n} → „für Home Assistant freigeben“).`,
+    spielt: `Music Assistant spielt in diesem Browser (${n}).`,
+    fehler: "⚠ " + MA.error + " – neuer Versuch in 30 s.",
+  };
+  let t = texte[MA.status] || "";
+  if (MA.wanted && MA.needsTap && MA.status !== "fehler") t += " Einmal irgendwo tippen, damit der Ton starten darf.";
+  $("#ma-hint").textContent = t;
+  $("#ma-hint").classList.toggle("err", MA.status === "fehler");
+}
+$("#ma-on").addEventListener("change", (e) => {
+  connectMa();
+  if (MA) MA.setWanted(e.target.checked);
+  renderMa();
+});
+
 function speakerName(id) {
   const p = (S.players || []).find((x) => x.entity_id === id);
   return p ? p.name : id;
@@ -513,6 +560,7 @@ function renderOutput() {
   else if (player.wanted && IS_IOS) hint = (HOST ? "Ton läuft auch auf anderen Dashboards weiter · " : "") + "Lautstärke am iPad/iPhone mit den Tasten regeln";
   else if (player.wanted) hint = HOST ? "Ton läuft im Home-Assistant-Fenster weiter, auch auf anderen Dashboards (ca. 2–4 s verzögert)" : "Wiedergabe ca. 2–4 s verzögert";
   $("#out-hint").textContent = hint;
+  renderMa();
   $("#out-hint").classList.toggle("err", err);
   const vol = browserOnly() ? player.volume : S.volume;
   if (document.activeElement !== $("#volume")) $("#volume").value = vol;
@@ -534,7 +582,10 @@ function renderOutMenu() {
     ${item("both", "🖥", "Mini-PC + dieses Gerät", { disabled: noLocal })}
     <div class="grp">Home Assistant Lautsprecher</div>
     ${players.length
-      ? players.map((p) => item("speaker:" + p.entity_id, p.ma ? "🎵" : "🔊", p.name, { small: p.ma ? "Music Assistant · " + p.entity_id : p.entity_id })).join("")
+      ? players.map((p) => {
+          const hier = p.ma && MA && MA.wanted && p.name === MA.name;
+          return item("speaker:" + p.entity_id, p.ma ? "🎵" : "🔊", p.name, { small: (p.ma ? "Music Assistant · " : "") + (hier ? "dieser Browser" : p.entity_id) });
+        }).join("")
       : `<div class="none">Keine weiteren Media Player gefunden. Sie erscheinen hier, sobald die Yapaia-Beat-Integration in Home Assistant eingerichtet ist.</div>`}
     ${maHinweis(players)}
     ${S.local_audio ? "" : item("none", "🔇", "Keine Ausgabe")}`;

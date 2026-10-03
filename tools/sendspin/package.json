@@ -1,0 +1,11 @@
+{
+  "name": "yapaia-beat-sendspin-bundle",
+  "private": true,
+  "description": "Bundles @sendspin/sendspin-js into one file for the Yapaia Beat card (run build.sh)",
+  "dependencies": {
+    "@sendspin/sendspin-js": "5.0.0"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2"
+  }
+}

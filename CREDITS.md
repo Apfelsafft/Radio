@@ -32,6 +32,9 @@ installiert und behalten ihre eigenen Lizenzen.
 | **aiohttp** | Webserver/HTTP-Client | aio-libs | Apache-2.0 | <https://github.com/aio-libs/aiohttp> |
 | **Home Assistant Base Images** (Debian) | Grundlage des Add-on-Images | Home Assistant / Open Home Foundation | Apache-2.0 | <https://github.com/home-assistant/docker-base> |
 | **s6-overlay** | Prozessverwaltung im Container | just-containers | ISC | <https://github.com/just-containers/s6-overlay> |
+| **sendspin-js** | Der Browser als Player von Music Assistant (in der Lovelace-Karte, `www/sendspin.js`) | Sendspin Protocol Authors / Open Home Foundation | Apache-2.0 | <https://github.com/Sendspin/sendspin-js> |
+| **noble-ciphers, noble-curves, noble-hashes** | Verschlüsselung für sendspin-js | Paul Miller | MIT | <https://paulmillr.com/noble/> |
+| **opus-encdec** (mit libopus) | Opus-Decoder für sendspin-js | Matt Diamond, Christopher Rudmin, DFKI; Xiph.Org u. a. | MIT; BSD-3-Clause | <https://github.com/mmig/opus-encdec> |
 | **bashio** | Hilfsfunktionen für das Startskript | Franck Nijhof | MIT | <https://github.com/hassio-addons/bashio> |
 
 ## Icons
