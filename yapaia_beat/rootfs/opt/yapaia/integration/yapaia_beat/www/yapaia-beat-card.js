@@ -10,7 +10,7 @@
  *   show_output: true                                # optional, output picker (Mini-PC / this device / HA speakers)
  */
 
-const CARD_VERSION = "1.6.0";
+const CARD_VERSION = "1.6.1";
 const STREAM_PATH = "/api/yapaia_beat/stream";
 
 const ICONS = {
@@ -46,6 +46,10 @@ const BrowserPlayer = {
   volume: (() => { try { return Number(localStorage.getItem("yapaia-beat.volume") || 80); } catch (e) { return 80; } })(),
   blocked: false,
   _retry: null,
+  _eigen: 0, // when we started/stopped the <audio> ourselves
+  _ruhe: false, // the radio is stopped – no sound wanted right now
+  _lage: null, // last seen { aktiv, station } of the radio
+  _ansage: 0, // another Yapaia module speaks in this browser since …
   _signing: false,
   _listeners: new Set(),
 
@@ -84,6 +88,14 @@ const BrowserPlayer = {
       };
       a.addEventListener("error", again);
       a.addEventListener("ended", again);
+      // iPad/iPhone pause our <audio> when another app or tab speaks (e.g.
+      // Yapaia Go's voice) and do not resume it.  Bring the sound back –
+      // unless we paused it ourselves.
+      a.addEventListener("pause", () => {
+        if (!this.wanted || this._ruhe || !a.src || Date.now() - this._eigen < 1500 || this._spricht()) return;
+        clearTimeout(this._retry);
+        this._retry = setTimeout(() => { if (this.wanted && !this._ruhe && a.paused && !this._spricht()) this.start(); }, 1000);
+      });
       a.addEventListener("playing", () => { this.blocked = false; this._notify(); });
     }
     return this.audio;
@@ -91,6 +103,8 @@ const BrowserPlayer = {
   start() {
     if (!this.url) { this.ensure(); return; } // starts once the URL is signed
     const a = this.el();
+    this._eigen = Date.now();
+    this._ruhe = false;
     // no cache buster: extra query parameters would invalidate the signature
     a.removeAttribute("src");
     a.load();
@@ -101,7 +115,36 @@ const BrowserPlayer = {
   },
   stop() {
     clearTimeout(this._retry);
+    this._eigen = Date.now();
     if (this.audio) { this.audio.pause(); this.audio.removeAttribute("src"); this.audio.load(); }
+  },
+  /* The radio itself was stopped / started / switched (seen in its state).
+   * The browser keeps several seconds of the stream in its buffer – without
+   * this, "stop" played on for ~5 s and a new station began only after the
+   * old buffer had run out.  So: stop at once, and (re)connect at the live
+   * edge when the radio starts or the station changes. */
+  /* Another Yapaia module (Yapaia Go) speaks in this browser.  iPad/iPhone
+   * pause our sound for that – don't fight it, and resume exactly when it
+   * is done (Yapaia Go calls ansageEndet when its utterance ends). */
+  ansageBeginnt() { this._ansage = Date.now(); },
+  ansageEndet() {
+    this._ansage = 0;
+    if (this.wanted && !this._ruhe && this.audio && this.audio.paused) {
+      clearTimeout(this._retry);
+      this._retry = setTimeout(() => this.start(), 300);
+    }
+  },
+  _spricht() { return this._ansage > 0 && Date.now() - this._ansage < 30000; },
+  _syncState(st) {
+    this.sync(st.state === "playing" || st.state === "buffering", st.attributes.station_id || st.attributes.station_name);
+  },
+  sync(aktiv, station) {
+    if (!this.wanted) { this._lage = null; return; }
+    const vorher = this._lage;
+    this._lage = { aktiv, station };
+    if (!vorher) return;
+    if (vorher.aktiv && !aktiv) { this.stop(); this._ruhe = true; return; }
+    if (aktiv && (!vorher.aktiv || (station && station !== vorher.station))) this.start();
   },
   setWanted(on) {
     this.wanted = on;
@@ -116,8 +159,8 @@ const BrowserPlayer = {
       if (!this.wanted || !hass) return;
       const id = this._entity || Object.keys(hass.states).find((e) => e.startsWith("media_player.yapaia_beat"));
       const st = id && hass.states[id];
-      if (st) { this._entity = id; this.updateSession(st.attributes, hass); }
-    }, 3000);
+      if (st) { this._entity = id; this.updateSession(st.attributes, hass); this._syncState(st); }
+    }, 1000);
   },
   setVolume(v) {
     this.volume = v;
@@ -226,7 +269,7 @@ class YapaiaBeatCard extends HTMLElement {
   set hass(hass) {
     this._hass = hass;
     const s = hass.states[this._config && this._config.entity];
-    if (s) BrowserPlayer.prepare(hass, s.attributes.stream_path);
+    if (s) { BrowserPlayer.prepare(hass, s.attributes.stream_path); BrowserPlayer._syncState(s); }
     this._render();
   }
 

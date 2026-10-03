@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.6.1
+
+- **Radio im Browser kommt nach einer Ansage zurück:** Spricht eine andere
+  App oder Yapaia Go auf dem iPad/iPhone, hält das Gerät den Ton von Beat an
+  – bisher blieb er aus, bis man Beat wieder öffnete. Jetzt spielt Beat
+  danach von selbst weiter (bei Yapaia Go genau, wenn die Ansage zu Ende ist)
+- **Stopp sofort, Senderwechsel schneller:** Der Browser hält einige Sekunden
+  des Streams vorrätig. Beim Stopp lief das Radio deshalb noch ~5 s weiter,
+  und ein neuer Sender kam erst, wenn der alte Vorrat abgespielt war. Jetzt
+  verwirft der Browser den Vorrat beim Stopp und beim Senderwechsel und setzt
+  beim aktuellen Ton ein. Die Zeit, bis der Empfänger einen neuen Sender
+  eingestellt hat (bei DAB+ einige Sekunden), bleibt
+
 ## 1.6.0
 
 - **Ansagen einmischen:** Yapaia Go (und jede Automation) kann jetzt in das
