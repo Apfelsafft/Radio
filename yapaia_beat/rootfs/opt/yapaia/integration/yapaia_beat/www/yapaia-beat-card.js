@@ -10,7 +10,7 @@
  *   show_output: true                                # optional, output picker (Mini-PC / this device / HA speakers)
  */
 
-const CARD_VERSION = "1.6.3";
+const CARD_VERSION = "1.6.4";
 const STREAM_PATH = "/api/yapaia_beat/stream";
 
 const ICONS = {
@@ -135,20 +135,6 @@ const BrowserPlayer = {
     }
   },
   _spricht() { return this._ansage > 0 && Date.now() - this._ansage < 30000; },
-  /* Live radio: the browser keeps a few seconds of the stream in stock –
-   * that delay hit every announcement too (~7 s from tap to voice).  Catch
-   * up to the live edge: jump if far behind, else play a little faster
-   * (pitch is kept) until the stock is small. */
-  _aufholen() {
-    const a = this.audio;
-    if (!a || a.paused || !a.buffered || !a.buffered.length) return;
-    const lag = a.buffered.end(a.buffered.length - 1) - a.currentTime;
-    try {
-      if (lag > 4) { a.currentTime = a.buffered.end(a.buffered.length - 1) - 0.8; return; }
-    } catch (e) { /* not seekable: catch up by speed */ }
-    if (lag > 1.5 && a.playbackRate === 1) a.playbackRate = 1.1;
-    else if (lag < 0.7 && a.playbackRate !== 1) a.playbackRate = 1;
-  },
   _syncState(st) {
     this.sync(st.state === "playing" || st.state === "buffering", st.attributes.station_id || st.attributes.station_name);
   },
@@ -171,7 +157,6 @@ const BrowserPlayer = {
     this._watchTimer = setInterval(() => {
       const hass = this._hassEl();
       if (!this.wanted) return;
-      this._aufholen();
       if (!hass) return;
       const id = this._entity || Object.keys(hass.states).find((e) => e.startsWith("media_player.yapaia_beat"));
       const st = id && hass.states[id];
