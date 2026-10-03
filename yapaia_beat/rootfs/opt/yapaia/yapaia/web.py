@@ -6,12 +6,14 @@ import asyncio
 import contextlib
 import json
 import logging
+import time
 from typing import Any
 
 from aiohttp import WSMsgType, web
 
 from .config import APP_DIR, VERSION
 from .ansage import PRIORITAETEN, dekodiere
+from .icy import ICY_NAME, IcyWriter, jetzt_titel
 from .radio import Radio
 from .store import display_name, normalize_name
 
@@ -347,20 +349,27 @@ async def scan_cancel(request: web.Request) -> web.Response:
 @routes.get("/stream.mp3")
 async def stream(request: web.Request) -> web.StreamResponse:
     radio = _radio(request)
-    resp = web.StreamResponse(
-        headers={
-            "Content-Type": "audio/mpeg",
-            "Cache-Control": "no-cache",
-            "icy-name": "Yapaia Beat",
-        }
-    )
+    # players that ask for it (Music Assistant, VLC …) get the current song as
+    # ICY metadata – otherwise Music Assistant shows the URL as the title
+    icy = IcyWriter() if request.headers.get("Icy-MetaData") == "1" else None
+    headers = {"Content-Type": "audio/mpeg", "Cache-Control": "no-cache", "icy-name": ICY_NAME}
+    if icy:
+        headers["icy-metaint"] = str(icy.metaint)
+    resp = web.StreamResponse(headers=headers)
     await resp.prepare(request)
     queue = radio.audio.add_client()
     radio.wake()  # a listener is back → leave standby
     radio.changed()
+    titel, titel_zeit = "", 0.0
     try:
         while True:
-            await resp.write(await queue.get())
+            chunk = await queue.get()
+            if icy:
+                jetzt = time.monotonic()
+                if jetzt - titel_zeit > 1:
+                    titel, titel_zeit = jetzt_titel(radio.status()), jetzt
+                chunk = icy.feed(chunk, titel)
+            await resp.write(chunk)
     except (ConnectionResetError, asyncio.CancelledError):
         pass
     finally:

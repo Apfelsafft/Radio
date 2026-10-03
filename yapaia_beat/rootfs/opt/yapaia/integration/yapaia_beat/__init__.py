@@ -349,11 +349,16 @@ class YapaiaStreamView(HomeAssistantView):
             raise web.HTTPNotFound()
         coord = coords[0]
         timeout = aiohttp.ClientTimeout(total=None, connect=5, sock_read=30)
+        # pass the ICY request (current song as metadata, e.g. for Music
+        # Assistant) through, and the add-on's ICY answer back
+        icy = {"Icy-MetaData": "1"} if request.headers.get("Icy-MetaData") == "1" else {}
         try:
-            upstream = await coord.session.get(f"{coord.base}/stream.mp3", timeout=timeout)
+            upstream = await coord.session.get(f"{coord.base}/stream.mp3", timeout=timeout, headers=icy)
         except (aiohttp.ClientError, asyncio.TimeoutError) as err:
             raise web.HTTPBadGateway(text=str(err)) from err
-        resp = web.StreamResponse(headers={"Content-Type": "audio/mpeg", "Cache-Control": "no-cache, no-store"})
+        headers = {"Content-Type": "audio/mpeg", "Cache-Control": "no-cache, no-store"}
+        headers.update({k: v for k, v in upstream.headers.items() if k.lower().startswith("icy-")})
+        resp = web.StreamResponse(headers=headers)
         try:
             await resp.prepare(request)
             async for chunk in upstream.content.iter_any():
