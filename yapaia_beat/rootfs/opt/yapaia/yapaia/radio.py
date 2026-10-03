@@ -46,6 +46,7 @@ class Radio:
         # other Home Assistant media players (reported by the integration) and
         # the one the radio is sent to ("speaker"); the integration does the casting
         self.players: list[dict[str, Any]] = []
+        self.music_assistant = False  # Music Assistant integration set up in HA
         self.speaker: str | None = store.settings.get("speaker")
         self.speaker_error: str | None = None
         self._listeners: set[asyncio.Queue[str]] = set()
@@ -249,12 +250,14 @@ class Radio:
             self.wake()
         self.changed()
 
-    def set_players(self, players: list[dict[str, Any]]) -> None:
+    def set_players(self, players: list[dict[str, Any]], music_assistant: bool | None = None) -> None:
         self.players = [
-            {"entity_id": str(p["entity_id"]), "name": str(p.get("name") or p["entity_id"])}
+            {"entity_id": str(p["entity_id"]), "name": str(p.get("name") or p["entity_id"]), "ma": bool(p.get("ma"))}
             for p in players
             if isinstance(p, dict) and p.get("entity_id")
         ]
+        if music_assistant is not None:
+            self.music_assistant = bool(music_assistant)
         self.changed()
 
     def set_speaker_error(self, error: str | None) -> None:
@@ -766,6 +769,7 @@ class Radio:
             "speaker": self.speaker,
             "speaker_error": self.speaker_error,
             "players": self.players,
+            "music_assistant": self.music_assistant,
             "auto_follow": self.auto_follow,
             "standby_minutes": self.opts.standby_minutes,
             "follow": dict(self.follow),

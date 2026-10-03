@@ -76,8 +76,14 @@ class SpeakerSync:
                 continue
             if not int(state.attributes.get(ATTR_SUPPORTED_FEATURES) or 0) & MediaPlayerEntityFeature.PLAY_MEDIA:
                 continue
-            out.append({"entity_id": state.entity_id, "name": state.name})
+            # players of Music Assistant carry this attribute; announcements
+            # sent to them are mixed in by Music Assistant itself
+            out.append({"entity_id": state.entity_id, "name": state.name, "ma": "mass_player_type" in state.attributes})
         return sorted(out, key=lambda p: p["name"].lower())
+
+    def music_assistant(self) -> bool:
+        """Is the Music Assistant integration set up in Home Assistant?"""
+        return "music_assistant" in self.hass.config.components
 
     def _schedule_push(self) -> None:
         if not self._push_scheduled:
@@ -86,15 +92,20 @@ class SpeakerSync:
 
     @staticmethod
     def _reported(data: dict[str, Any]) -> list[dict[str, Any]]:
-        return [{"entity_id": p.get("entity_id"), "name": p.get("name")} for p in data.get("players") or []]
+        return [
+            {"entity_id": p.get("entity_id"), "name": p.get("name"), "ma": bool(p.get("ma"))} for p in data.get("players") or []
+        ]
+
+    def _aktuell(self, data: dict[str, Any]) -> bool:
+        return self._reported(data) == self.players() and bool(data.get("music_assistant")) == self.music_assistant()
 
     async def _push_players(self) -> None:
         await asyncio.sleep(1)  # collect bursts of state changes
         self._push_scheduled = False
         players = self.players()
-        if players == self._reported(self.coord.data or {}):
+        if self._aktuell(self.coord.data or {}):
             return
-        await self._command("/api/players", {"players": players})
+        await self._command("/api/players", {"players": players, "music_assistant": self.music_assistant()})
 
     @callback
     def _on_state(self, event: Event) -> None:
@@ -113,7 +124,7 @@ class SpeakerSync:
         data = self.coord.data or {}
         if "speaker" not in data or not self._ready:
             return  # add-on too old / players not loaded yet
-        if self._reported(data) != self.players():
+        if not self._aktuell(data):
             self._schedule_push()  # e.g. the add-on was restarted
         if self._lock.locked():
             self._again = True

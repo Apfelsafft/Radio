@@ -504,7 +504,9 @@ function renderOutput() {
   if (!$("#out-menu").hidden) renderOutMenu();
   $("#browser-unlock").hidden = !(player.wanted && player.blocked);
   let hint = "", err = false;
+  const maSpeaker = S.speaker && (S.players || []).some((x) => x.entity_id === S.speaker && x.ma);
   if (S.speaker_error) { hint = "⚠ " + S.speaker_error; err = true; }
+  else if (maSpeaker) hint = "Über Music Assistant · Ansagen von Yapaia Go spielt Music Assistant ohne Verzögerung ein und hat dabei Vorrang";
   else if (player.wanted && player.blocked) hint = "Der Browser startet den Ton erst nach einem Tippen – einfach irgendwo tippen";
   else if (!S.local_audio && mode === "none") hint = "Mini-PC-Ausgabe nicht verfügbar (Audio im Add-on prüfen)";
   else if (player.wanted && !HOST && window.parent !== window) hint = "Ton läuft nur auf dieser Seite – beim Wechsel zu einem anderen Dashboard hört er auf. Home Assistant einmal neu laden.";
@@ -532,9 +534,20 @@ function renderOutMenu() {
     ${item("both", "🖥", "Mini-PC + dieses Gerät", { disabled: noLocal })}
     <div class="grp">Home Assistant Lautsprecher</div>
     ${players.length
-      ? players.map((p) => item("speaker:" + p.entity_id, "🔊", p.name, { small: p.entity_id })).join("")
+      ? players.map((p) => item("speaker:" + p.entity_id, p.ma ? "🎵" : "🔊", p.name, { small: p.ma ? "Music Assistant · " + p.entity_id : p.entity_id })).join("")
       : `<div class="none">Keine weiteren Media Player gefunden. Sie erscheinen hier, sobald die Yapaia-Beat-Integration in Home Assistant eingerichtet ist.</div>`}
+    ${maHinweis(players)}
     ${S.local_audio ? "" : item("none", "🔇", "Keine Ausgabe")}`;
+}
+
+/* Why no player of Music Assistant shows up -- the most common reason is
+ * that Music Assistant does not hand its players to Home Assistant. */
+function maHinweis(players) {
+  if (players.some((p) => p.ma)) return "";
+  const text = S.music_assistant
+    ? "Music Assistant ist eingerichtet, gibt aber keinen Player an Home Assistant weiter. In Music Assistant: Einstellungen → Wiedergabegeräte → Player wählen → „Dieses Wiedergabegerät für Home Assistant freigeben“ einschalten und speichern."
+    : "Music-Assistant-Player erscheinen hier, sobald Music Assistant als Integration in Home Assistant eingerichtet ist (Einstellungen → Geräte & Dienste) und seine Player für Home Assistant freigibt.";
+  return `<div class="grp">Music Assistant</div><div class="none">${esc(text)}</div>`;
 }
 
 $("#out-btn").addEventListener("click", (e) => {
