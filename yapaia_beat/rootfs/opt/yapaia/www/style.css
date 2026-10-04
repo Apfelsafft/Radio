@@ -68,7 +68,24 @@ button.icon.big svg { width: 32px; height: 32px; }
 button.icon.small { width: 36px; height: 36px; padding: 6px; }
 button.icon.active { color: var(--accent2); }
 .vol-row { display: flex; align-items: center; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
-input[type=range] { accent-color: var(--accent); width: 200px; }
+/* own slider: the native one on iPad/iPhone filled faster than the thumb
+   moved (from ~80 % on the fill ran ahead and the thumb never reached the
+   end).  The fill ends exactly under the middle of the thumb (--f = 0…1). */
+input[type=range] {
+  -webkit-appearance: none; appearance: none; width: 200px; height: 28px;
+  background: transparent; --f: 0.5; cursor: pointer; margin: 0;
+}
+input[type=range]::-webkit-slider-runnable-track {
+  height: 6px; border-radius: 3px;
+  background: linear-gradient(to right, var(--accent) 0 calc(11px + (100% - 22px) * var(--f)), var(--line) 0);
+}
+input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none; width: 22px; height: 22px; margin-top: -8px;
+  border-radius: 50%; background: #fff; box-shadow: 0 1px 4px #0008; border: 0;
+}
+input[type=range]::-moz-range-track { height: 6px; border-radius: 3px; background: var(--line); }
+input[type=range]::-moz-range-progress { height: 6px; border-radius: 3px; background: var(--accent); }
+input[type=range]::-moz-range-thumb { width: 22px; height: 22px; border-radius: 50%; background: #fff; border: 0; box-shadow: 0 1px 4px #0008; }
 .switch { display: inline-flex; align-items: center; gap: 8px; margin-left: auto; color: var(--muted); cursor: pointer; }
 .switch input { display: none; }
 .switch span { width: 38px; height: 22px; border-radius: 11px; background: var(--line); position: relative; transition: .2s; }
@@ -98,9 +115,17 @@ input[type=range] { accent-color: var(--accent); width: 200px; }
 .tile .name { margin-top: 6px; font-weight: 600; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tile .band { color: var(--muted); font-size: 11px; }
 .tile.playing { border-color: var(--accent); }
-.tile .move { position: absolute; top: 4px; display: none; padding: 2px 7px; font-size: 12px; }
-.tile:hover .move { display: block; }
-.tile .move.l { left: 4px; } .tile .move.r { right: 4px; }
+/* no :hover any more – on iPad/iPhone the first tap only showed the arrows */
+.tile { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; touch-action: manipulation; }
+.tile.edit { border-color: var(--accent2); box-shadow: 0 0 0 3px #f7c54833; }
+.tile .move, .tile .del {
+  position: absolute; width: 44px; height: 44px; border-radius: 50%; padding: 0;
+  font-size: 26px; line-height: 1; display: flex; align-items: center; justify-content: center;
+  background: #000b; color: #fff; border: 2px solid var(--accent2); z-index: 2;
+}
+.tile .move { top: calc(50% - 40px); }
+.tile .move.l { left: 2px; } .tile .move.r { right: 2px; }
+.tile .del { bottom: 4px; left: calc(50% - 22px); font-size: 20px; border-color: #ff8a80; }
 .empty, .muted { color: var(--muted); }
 .search-row { display: flex; gap: 10px; flex-wrap: wrap; }
 input, dialog input { font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 9px 12px; }

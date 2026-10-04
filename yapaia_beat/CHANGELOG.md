@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.10.0
+
+- **Favoriten mit einem Tippen wechseln:** Auf iPad und iPhone zeigte das
+  erste Tippen nur die kleinen Pfeile zum Umsortieren, erst das zweite
+  wechselte den Sender. Jetzt wechselt ein Tippen sofort
+- **Favoriten bearbeiten mit langem Drücken:** Eine halbe Sekunde halten
+  öffnet den Favoriten mit großen Pfeilen zum Verschieben und einem
+  Mülleimer zum Entfernen (wie der Stern in der Senderliste). Der Favorit
+  bleibt nach einem Pfeil offen und kann so mehrere Plätze wandern. Ein
+  Tippen daneben schließt ihn wieder
+- **Lautstärke-Regler:** Der farbige Balken lief ab etwa 80 % dem Regler
+  voraus, und der Regler erreichte das rechte Ende nicht. Der Regler ist
+  jetzt selbst gezeichnet, der Balken endet genau unter seiner Mitte (auch
+  in der Karte)
+- **Sendername in Music Assistant:** „SWR3 via Yapaia Beat“ statt nur
+  „Yapaia Beat“ (gilt ab dem nächsten Start der Wiedergabe)
+- **„Yapaia Browser“** statt „Yapaia iPad“: So heißt der Player von „Music
+  Assistant in diesem Browser“ jetzt – es ist nicht immer ein iPad. Wer ihn
+  schon angemeldet hat, kann ihn in Music Assistant mit dem Stift
+  umbenennen, falls der alte Name bleibt
+
 ## 1.9.0
 
 - **Ansagen sofort, auch wenn das Radio über Music Assistant läuft:** Spielt

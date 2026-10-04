@@ -306,10 +306,10 @@ Dashboard, verstummt er. Yapaia Beat bringt deshalb einen eigenen mit, der im
 Home-Assistant-Fenster selbst läuft und auf jedem Dashboard weiterspielt:
 
 1. In Beat unter der Ausgabe **„Music Assistant in diesem Browser“**
-   einschalten. Der Browser meldet sich als Player „Yapaia iPad“ (bzw.
-   iPhone, Android-Tablet, Browser) bei Music Assistant an.
+   einschalten. Der Browser meldet sich als Player „Yapaia Browser“ bei
+   Music Assistant an (umbenennen geht dort mit dem Stift).
 2. Music Assistant fragt einmal, ob es den Player zulassen soll: in Music
-   Assistant → Einstellungen → Wiedergabegeräte → „Yapaia iPad“ öffnen und
+   Assistant → Einstellungen → Wiedergabegeräte → „Yapaia Browser“ öffnen und
    **ohne Kopplung verbinden**. Beat zeigt so lange „Music Assistant muss den
    Player einmal zulassen“.
 3. Sobald Music Assistant ihn an Home Assistant weitergibt, steht er in der
