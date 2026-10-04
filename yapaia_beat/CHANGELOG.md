@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.10.1
+
+- **Music Assistant ließ sich nicht mehr öffnen:** Im Protokoll von Music
+  Assistant stand im Sekundentakt „Ingress auth failed for sendspin proxy“.
+  „Music Assistant in diesem Browser“ hatte seine Ingress-Sitzung angelegt,
+  während Home Assistant noch startete. Eine solche Sitzung trägt keinen
+  Benutzer, und Music Assistant lehnt sie ab. Der Player versuchte es dann
+  jede Sekunde neu und schrieb dabei jedes Mal das Ingress-Cookie neu. Das
+  Cookie gilt für alle Add-on-Seiten, so bekam auch die Seite von Music
+  Assistant die Sitzung ohne Benutzer und lud nicht mehr. Jetzt:
+  - wartet der Player, bis Home Assistant ganz gestartet ist
+  - schreibt er das Cookie nur, wenn er eine neue Sitzung anlegt
+  - holt er nach drei Ablehnungen eine frische Sitzung; nach zehn macht er
+    fünf Minuten Pause, statt im Sekundentakt anzuklopfen
+
 ## 1.10.0
 
 - **Favoriten mit einem Tippen wechseln:** Auf iPad und iPhone zeigte das

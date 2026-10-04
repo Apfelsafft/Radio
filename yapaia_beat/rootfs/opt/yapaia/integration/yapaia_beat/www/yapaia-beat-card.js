@@ -10,7 +10,7 @@
  *   show_output: true                                # optional, output picker (Mini-PC / this device / HA speakers)
  */
 
-const CARD_VERSION = "1.10.0";
+const CARD_VERSION = "1.10.1";
 const STREAM_PATH = "/api/yapaia_beat/stream";
 const SENDSPIN_URL = "/yapaia_beat/sendspin.js";
 
@@ -305,10 +305,31 @@ const MaPlayer = {
   _cookie() {
     if (this._session) document.cookie = `ingress_session=${this._session};path=/api/hassio_ingress/;SameSite=Strict${this._secure ? ";Secure" : ""}`;
   },
+  /* Keep our ingress session alive.  The cookie is shared by every add-on
+   * page in Home Assistant (Music Assistant's own included), so it is only
+   * written when we create a session – never on every check (1.10 rewrote it
+   * on every reconnect and broke Music Assistant's page with it). */
   async _keepSession() {
     if (!this._session) return;
-    try { await this._sup("/ingress/validate_session", "post", { session: this._session }); this._cookie(); }
+    try { await this._sup("/ingress/validate_session", "post", { session: this._session }); }
     catch (e) { try { await this._newSession(); } catch (e2) { /* next round */ } }
+  },
+  /* Music Assistant turned the connection down (it closes at once, so the
+   * library retries every second).  The usual cause: our ingress session was
+   * created while Home Assistant was still starting, without a user – Music
+   * Assistant needs one.  So: a fresh session every third try; after ten,
+   * stop for five minutes instead of knocking every second. */
+  _abgelehnt() {
+    this._fehlversuche = (this._fehlversuche || 0) + 1;
+    if (this._fehlversuche >= 10) {
+      this._fehlversuche = 0;
+      this._teardown();
+      this._set("fehler", "Music Assistant nimmt die Anmeldung nicht an. Neuer Versuch in 5 Minuten (oder Schalter aus und wieder ein).");
+      clearTimeout(this._retry);
+      this._retry = setTimeout(() => { if (this.wanted) this.start(); }, 5 * 60000);
+      return;
+    }
+    if (this._fehlversuche % 3 === 0) this._newSession().catch(() => {});
   },
   async start() {
     if (this.player || this._starting) return;
@@ -329,9 +350,9 @@ const MaPlayer = {
         requiredLeadTimeMs: 250,
         minBufferMs: 500,
         reconnect: {
-          maxDelayMs: 15000,
-          // a reconnect needs a valid ingress cookie (it may have expired meanwhile)
-          onReconnecting: () => { this._cookie(); this._keepSession(); },
+          baseDelayMs: 2000,
+          maxDelayMs: 30000,
+          onReconnecting: () => this._abgelehnt(),
         },
         onStateChange: () => this._check(),
       });
@@ -340,7 +361,7 @@ const MaPlayer = {
       this._sessionTimer = setInterval(() => this._keepSession(), 60000);
       this._check();
     } catch (err) {
-      this._set("fehler", (err && err.message) || String(err));
+      this._set("fehler", (err && err.message) || "Keine Verbindung zu Music Assistant.");
       this._teardown();
       // try again later – Music Assistant may just be starting
       clearTimeout(this._retry);
@@ -352,9 +373,12 @@ const MaPlayer = {
   _check() {
     const p = this.player;
     if (!p) return;
-    if (!p.isConnected) { this._set("verbindet"); return; }
+    if (!p.isConnected) { this._seit = 0; this._set("verbindet"); return; }
     let roles = null;
     try { roles = p.core.protocolHandler.activeRoles; } catch (e) { /* internals changed */ }
+    // connected for a while: the session is fine
+    if (!this._seit) this._seit = Date.now();
+    else if (Date.now() - this._seit > 10000) this._fehlversuche = 0;
     if (roles && roles.size === 0) { this._set("wartet"); return; } // not yet allowed in Music Assistant
     this._wache();
     this._set(p.isPlaying ? "spielt" : "bereit");
@@ -468,7 +492,12 @@ window.YapaiaBeatMa = MaPlayer;
 if (MaPlayer.wanted) {
   MaPlayer.needsTap = true;
   // wait until Home Assistant's frontend is ready
-  const los = () => (MaPlayer._hass() ? MaPlayer.start() : setTimeout(los, 1000));
+  // … and until Home Assistant has fully started: a session created before
+  // that carries no user, and Music Assistant turns it down
+  const los = () => {
+    const h = MaPlayer._hass();
+    return h && (!h.config || !h.config.state || h.config.state === "RUNNING") ? MaPlayer.start() : setTimeout(los, 1000);
+  };
   setTimeout(los, 500);
 }
 
