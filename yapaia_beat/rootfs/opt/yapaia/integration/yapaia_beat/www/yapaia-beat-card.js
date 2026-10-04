@@ -10,7 +10,7 @@
  *   show_output: true                                # optional, output picker (Mini-PC / this device / HA speakers)
  */
 
-const CARD_VERSION = "1.9.0";
+const CARD_VERSION = "1.10.0";
 const STREAM_PATH = "/api/yapaia_beat/stream";
 const SENDSPIN_URL = "/yapaia_beat/sendspin.js";
 
@@ -242,13 +242,6 @@ if (BrowserPlayer.wanted) BrowserPlayer._watch();
  * It tells Music Assistant honestly that it is Yapaia Beat (not Music
  * Assistant's web player), so Music Assistant asks once to allow it. */
 const MA_SLUGS = ["d5369777_music_assistant", "d5369777_music_assistant_beta"];
-const geraetName = () => {
-  const ua = navigator.userAgent || "";
-  if (/iPad/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1)) return "iPad";
-  if (/iPhone/.test(ua)) return "iPhone";
-  if (/Android/.test(ua)) return /Mobile/.test(ua) ? "Android-Handy" : "Android-Tablet";
-  return "Browser";
-};
 const lies = (k, d) => { try { const v = localStorage.getItem(k); return v === null ? d : v; } catch (e) { return d; } };
 const schreib = (k, v) => { try { localStorage.setItem(k, v); } catch (e) { /* ignore */ } };
 // own keys: Music Assistant's page runs on the same origin and must keep its own identity
@@ -259,7 +252,8 @@ const SS_STORAGE = {
 
 const MaPlayer = {
   wanted: lies("yapaia-beat.ma", "0") === "1",
-  name: lies("yapaia-beat.ma-name", "") || "Yapaia " + geraetName(),
+  // "Yapaia Browser" – it is not always an iPad (a name chosen earlier stays)
+  name: lies("yapaia-beat.ma-name", "") || "Yapaia Browser",
   status: "aus", // aus | sucht | verbindet | wartet | bereit | spielt | fehler
   error: "",
   needsTap: false,
@@ -637,6 +631,7 @@ class YapaiaBeatCard extends HTMLElement {
       this._render();
     };
     this._el.mute.onclick = () => this._call("media_player", "volume_mute", { is_volume_muted: !this._muted });
+    this._el.volume.oninput = (e) => e.target.style.setProperty("--f", String(Number(e.target.value) / 100));
     this._el.volume.onchange = (e) => {
       if (this._browserOnly()) { BrowserPlayer.setVolume(Number(e.target.value)); this._render(); }
       else this._call("media_player", "volume_set", { volume_level: Number(e.target.value) / 100 });
@@ -763,6 +758,7 @@ class YapaiaBeatCard extends HTMLElement {
     e.mute.innerHTML = svg(this._muted ? ICONS.mute : ICONS.volDown);
     const vol = this._browserOnly() ? BrowserPlayer.volume : Math.round((a.volume_level || 0) * 100);
     if (!e.volume.matches(":active")) e.volume.value = vol;
+    e.volume.style.setProperty("--f", String(Number(e.volume.value) / 100));
     e.out.hidden = !this._config.show_output;
     e.out.classList.toggle("active", !!a.speaker || BrowserPlayer.wanted);
     e.out.classList.toggle("blink", BrowserPlayer.wanted && BrowserPlayer.blocked);
@@ -848,7 +844,13 @@ YapaiaBeatCard.styles = `
   @keyframes yb-blink { 50% { color: #ff6b35; box-shadow: 0 0 10px #ff6b35; } }
   .b[hidden] { display: none; }
   .vol { flex: 1; display: flex; align-items: center; gap: 6px; min-width: 120px; }
-  .volume { flex: 1; accent-color: var(--accent); }
+  /* own slider: the native one on iPad/iPhone filled ahead of its thumb */
+  .volume { flex: 1; -webkit-appearance: none; appearance: none; height: 26px; background: transparent; --f: 0.5; margin: 0; }
+  .volume::-webkit-slider-runnable-track { height: 6px; border-radius: 3px; background: linear-gradient(to right, var(--accent) 0 calc(10px + (100% - 20px) * var(--f)), #ffffff2a 0); }
+  .volume::-webkit-slider-thumb { -webkit-appearance: none; width: 20px; height: 20px; margin-top: -7px; border-radius: 50%; background: #fff; border: 0; box-shadow: 0 1px 4px #0008; }
+  .volume::-moz-range-track { height: 6px; border-radius: 3px; background: #ffffff2a; }
+  .volume::-moz-range-progress { height: 6px; border-radius: 3px; background: var(--accent); }
+  .volume::-moz-range-thumb { width: 20px; height: 20px; border-radius: 50%; background: #fff; border: 0; }
   .outmenu { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
   .outmenu[hidden] { display: none; }
   .outmenu button { border: 1px solid #ffffff2a; background: #0005; color: #f3e6d4; border-radius: 16px; padding: 6px 12px; font: inherit; font-size: 13px; cursor: pointer; }

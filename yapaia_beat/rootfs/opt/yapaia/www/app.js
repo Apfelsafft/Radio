@@ -129,6 +129,10 @@ function render(s) {
 /* Favourites are split into pages that fit the free space below the player
  * (no page scrolling); swipe horizontally or tap the dots to switch pages. */
 let favPage = 0;
+let favEdit = null; // id of the tile open for editing
+let favDruck = null; // running long press
+let favLang = false; // the long press fired (finger still down)
+let favLangBis = 0; // swallow the click of that release – only right after it
 function favLayout() {
   const box = $("#fav-grid");
   const width = box.clientWidth || 600;
@@ -159,9 +163,11 @@ function renderFavorites() {
       ${page.map((f, j) => {
         const i = p * L.per + j;
         return `
-        <div class="tile ${S.active_favorite === f.id ? "playing" : ""}" data-id="${esc(f.id)}">
-          ${i > 0 ? `<button class="move l" data-move="-1" title="nach vorne">‹</button>` : ""}
-          ${i < favs.length - 1 ? `<button class="move r" data-move="1" title="nach hinten">›</button>` : ""}
+        <div class="tile ${S.active_favorite === f.id ? "playing" : ""} ${favEdit === f.id ? "edit" : ""}" data-id="${esc(f.id)}">
+          ${favEdit === f.id ? `
+          ${i > 0 ? `<button class="move l" data-move="-1" title="nach vorne" aria-label="nach vorne">‹</button>` : ""}
+          ${i < favs.length - 1 ? `<button class="move r" data-move="1" title="nach hinten" aria-label="nach hinten">›</button>` : ""}
+          <button class="del" data-del="1" title="Aus den Favoriten entfernen" aria-label="Aus den Favoriten entfernen">🗑</button>` : ""}
           <img src="${esc(f.logo_url)}" alt="" loading="lazy" onerror="this.onerror=null;this.src='api/logo/${esc(f.id)}?placeholder=1'">
           <div class="name">${esc(f.name)}</div>
           <div class="band">${esc(sub(f))}</div>
@@ -191,7 +197,41 @@ $("#fav-dots").addEventListener("click", (e) => {
 let resizeTimer;
 window.addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(() => S && renderFavorites(), 150); });
 
+/* Favourites: one tap tunes in.  Holding a tile (half a second) opens it
+ * for editing – large arrows to move it (it stays open, so it can travel
+ * several places) and a bin to remove it (like the star in the station
+ * list).  A tap anywhere else closes it. */
+const LANG_MS = 500;
+function favEditEnde() { if (favEdit) { favEdit = null; renderFavorites(); } }
+$("#fav-grid").addEventListener("pointerdown", (e) => {
+  const tile = e.target.closest(".tile");
+  if (!tile || e.target.closest("button")) return;
+  clearTimeout(favDruck && favDruck.uhr);
+  favDruck = {
+    x: e.clientX, y: e.clientY,
+    uhr: setTimeout(() => {
+      favLang = true;
+      favEdit = tile.dataset.id;
+      renderFavorites();
+      if (navigator.vibrate) navigator.vibrate(30);
+    }, LANG_MS),
+  };
+});
+$("#fav-grid").addEventListener("pointermove", (e) => {
+  if (favDruck && Math.hypot(e.clientX - favDruck.x, e.clientY - favDruck.y) > 10) { clearTimeout(favDruck.uhr); favDruck = null; }
+});
+["pointerup", "pointercancel", "pointerleave"].forEach((ev) =>
+  $("#fav-grid").addEventListener(ev, () => {
+    if (favDruck) { clearTimeout(favDruck.uhr); favDruck = null; }
+    // the tile was redrawn while held, so a click may or may not follow
+    if (favLang) { favLang = false; favLangBis = Date.now() + 400; }
+  }));
+$("#fav-grid").addEventListener("contextmenu", (e) => { if (e.target.closest(".tile")) e.preventDefault(); });
+document.addEventListener("click", (e) => { if (favEdit && !e.target.closest("#fav-grid .tile.edit")) favEditEnde(); });
+
 $("#fav-grid").addEventListener("click", async (e) => {
+  // the release of the long press is no tap (the buttons only appear with it)
+  if ((favLang || Date.now() < favLangBis) && !e.target.closest("button")) { favLangBis = 0; e.stopPropagation(); return; }
   const tile = e.target.closest(".tile");
   if (!tile) return;
   const move = e.target.closest("[data-move]");
@@ -199,10 +239,28 @@ $("#fav-grid").addEventListener("click", async (e) => {
     e.stopPropagation();
     const ids = S.favorites.map((f) => f.id);
     const i = ids.indexOf(tile.dataset.id), j = i + Number(move.dataset.move);
+    if (j < 0 || j >= ids.length) return;
     [ids[i], ids[j]] = [ids[j], ids[i]];
+    // show it at once (stays open for the next step), then save
+    const byId = Object.fromEntries(S.favorites.map((f) => [f.id, f]));
+    S.favorites = ids.map((id) => byId[id]);
+    const L = favLayout();
+    favPage = Math.floor(j / L.per);
+    renderFavorites();
     await api("api/favorites", { order: ids });
     return;
   }
+  if (e.target.closest("[data-del]")) {
+    e.stopPropagation();
+    const id = tile.dataset.id;
+    favEdit = null;
+    S.favorites = S.favorites.filter((f) => f.id !== id);
+    renderFavorites();
+    await api("api/favorites", { id, favorite: false });
+    loadStations();
+    return;
+  }
+  if (favEdit) { e.stopPropagation(); favEditEnde(); return; } // a tap closes the editing first
   // immediate feedback while the receiver retunes
   $$("#fav-grid .tile").forEach((t) => t.classList.toggle("pending", t === tile));
   try { await api("api/play", { id: tile.dataset.id }); } finally { tile.classList.remove("pending"); }
@@ -293,7 +351,9 @@ $("#btn-seek-up").onclick = () => api("api/seek", { direction: "up" });
 $("#btn-seek-down").onclick = () => api("api/seek", { direction: "down" });
 $("#btn-fav").onclick = () => S && S.station && api("api/favorites", { id: S.station.id, favorite: !S.station.favorite }).then(loadStations);
 $("#btn-mute").onclick = () => api("api/volume", { muted: !(S && S.muted) });
-$("#volume").addEventListener("input", (e) => { $("#volume-text").textContent = e.target.value; });
+/* the slider's fill follows its value (see style.css) */
+function fill(el) { el.style.setProperty("--f", String((Number(el.value) - Number(el.min || 0)) / ((Number(el.max || 100) - Number(el.min || 0)) || 1))); }
+$("#volume").addEventListener("input", (e) => { $("#volume-text").textContent = e.target.value; fill(e.target); });
 $("#volume").addEventListener("change", (e) => {
   if (browserOnly()) { player.setVolume(Number(e.target.value)); renderOutput(); }
   else api("api/volume", { volume: Number(e.target.value) });
@@ -564,6 +624,7 @@ function renderOutput() {
   $("#out-hint").classList.toggle("err", err);
   const vol = browserOnly() ? player.volume : S.volume;
   if (document.activeElement !== $("#volume")) $("#volume").value = vol;
+  fill($("#volume"));
   $("#volume-text").textContent = !browserOnly() && S.muted ? "stumm" : vol;
 }
 

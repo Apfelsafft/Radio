@@ -13,7 +13,7 @@ from aiohttp import WSMsgType, web
 
 from .config import APP_DIR, VERSION
 from .ansage import PRIORITAETEN, dekodiere
-from .icy import ICY_NAME, IcyWriter, jetzt_titel
+from .icy import IcyWriter, icy_name, jetzt_titel
 from .radio import Radio
 from .store import display_name, normalize_name
 
@@ -352,7 +352,7 @@ async def stream(request: web.Request) -> web.StreamResponse:
     # players that ask for it (Music Assistant, VLC …) get the current song as
     # ICY metadata – otherwise Music Assistant shows the URL as the title
     icy = IcyWriter() if request.headers.get("Icy-MetaData") == "1" else None
-    headers = {"Content-Type": "audio/mpeg", "Cache-Control": "no-cache", "icy-name": ICY_NAME}
+    headers = {"Content-Type": "audio/mpeg", "Cache-Control": "no-cache", "icy-name": icy_name(radio.status())}
     if icy:
         headers["icy-metaint"] = str(icy.metaint)
     resp = web.StreamResponse(headers=headers)

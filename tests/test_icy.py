@@ -3,7 +3,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "yapaia_beat/rootfs/opt/yapaia"))
 
-from yapaia.icy import IcyWriter, icy_block, jetzt_titel  # noqa: E402
+from yapaia.icy import IcyWriter, icy_block, icy_name, jetzt_titel  # noqa: E402
 
 
 def test_titel():
@@ -11,6 +11,11 @@ def test_titel():
     assert jetzt_titel(st) == "WizTheMc - Show me love"
     assert jetzt_titel({**st, "artist": None, "title": None, "radiotext": "Hallo"}) == "Hallo"
     assert jetzt_titel({**st, "playing": False}) == "SWR3"
+
+
+def test_name():
+    assert icy_name({"station": {"name": "SWR3"}}) == "SWR3 via Yapaia Beat"
+    assert icy_name({}) == "Yapaia Beat"
 
 
 def test_block():
@@ -70,6 +75,7 @@ def test_stream_liefert_icy_nur_auf_wunsch():
         async with TestClient(TestServer(app)) as c:
             r = await c.get("/stream.mp3", headers={"Icy-MetaData": "1"})
             assert r.headers["icy-metaint"] == "16000"
+            assert r.headers["icy-name"] == "SWR3 via Yapaia Beat"
             daten = await r.content.readexactly(16000 + 1 + 32)
             assert b"StreamTitle='Band - Lied';" in daten[16000:]
             r.close()

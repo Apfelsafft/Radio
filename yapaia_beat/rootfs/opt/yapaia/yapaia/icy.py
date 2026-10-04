@@ -15,6 +15,13 @@ METAINT = 16000
 ICY_NAME = "Yapaia Beat"
 
 
+def icy_name(status: dict[str, Any]) -> str:
+    """Name of the stream: "<station> via Yapaia Beat" (Music Assistant shows it
+    as the radio's name; sent when a player connects)."""
+    station = (status.get("station") or {}).get("name")
+    return f"{station} via {ICY_NAME}" if station else ICY_NAME
+
+
 def jetzt_titel(status: dict[str, Any]) -> str:
     """What is on now, as "Artist - Title" (Music Assistant splits it there)."""
     station = (status.get("station") or {}).get("name") or ""
