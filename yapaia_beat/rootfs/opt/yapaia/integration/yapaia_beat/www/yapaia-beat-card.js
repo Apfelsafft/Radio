@@ -10,7 +10,7 @@
  *   show_output: true                                # optional, output picker (Mini-PC / this device / HA speakers)
  */
 
-const CARD_VERSION = "1.8.2";
+const CARD_VERSION = "1.9.0";
 const STREAM_PATH = "/api/yapaia_beat/stream";
 const SENDSPIN_URL = "/yapaia_beat/sendspin.js";
 
@@ -409,6 +409,58 @@ const MaPlayer = {
     clearTimeout(this._retry);
     if (on) { this.needsTap = true; this.start().then(() => this.unlock(false)); }
     else { this._teardown(); this._set("aus"); }
+  },
+  /* Plays the radio here right now?  Then announcements are mixed in here. */
+  hoertHier() {
+    return !!(this.wanted && this.player && this.player.isConnected && this.player.isPlaying);
+  },
+  /* Mix an announcement (an audio file of Home Assistant's TTS) into what
+   * this player plays: music down, announcement on top, music up again.
+   * Right here in the browser – without Music Assistant's stock of the radio
+   * stream, which delayed announcements mixed in by Beat by several seconds.
+   * One at a time; resolves true once it has been played. */
+  sprich(url, pegel = 0.3) {
+    const lauf = (this._ansagen || Promise.resolve()).then(() => this._sprich(url, pegel));
+    this._ansagen = lauf.catch(() => false);
+    return lauf;
+  },
+  async _sprich(url, pegel) {
+    const s = this.player && this.player.scheduler;
+    const ctx = s && s.audioContext;
+    const g = s && s.gainNode;
+    if (!ctx || !g) return false;
+    try {
+      if (ctx.state === "suspended") await ctx.resume();
+      const res = await fetch(url, { credentials: "same-origin" });
+      if (!res.ok) return false;
+      const audio = await ctx.decodeAudioData(await res.arrayBuffer());
+      const src = ctx.createBufferSource();
+      src.buffer = audio;
+      const voll = g.gain.value;
+      // as loud as the music at the player's volume (the player's own gain
+      // is the one turned down); muted → still audible
+      const laut = ctx.createGain();
+      laut.gain.value = voll > 0.05 ? voll : 1;
+      // the same output as the music (on iPad/iPhone: its <audio> element),
+      // so iOS does not pause one for the other
+      src.connect(laut).connect(s.streamDestination || ctx.destination);
+      const t = ctx.currentTime;
+      g.gain.cancelScheduledValues(t);
+      g.gain.setValueAtTime(voll, t);
+      g.gain.linearRampToValueAtTime(voll * pegel, t + 0.25);
+      const fertig = new Promise((r) => { src.onended = r; });
+      src.start(t + 0.25);
+      this._weiter();
+      await fertig;
+      const t2 = ctx.currentTime;
+      g.gain.cancelScheduledValues(t2);
+      g.gain.setValueAtTime(g.gain.value, t2);
+      g.gain.linearRampToValueAtTime(voll, t2 + 0.5);
+      return true;
+    } catch (e) {
+      console.warn("Yapaia Beat: announcement in the browser failed", e);
+      return false;
+    }
   },
   setName(name) {
     const n = String(name || "").trim().slice(0, 40);
