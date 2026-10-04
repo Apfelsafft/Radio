@@ -320,6 +320,11 @@ einer halben Sekunde Puffer, und Ansagen von Yapaia Go mischt Music
 Assistant ein. Nach dem Neuladen von Home Assistant verlangt der Browser
 einmal ein Tippen, bevor er Ton ausgeben darf.
 
+Ansagen von Yapaia Go (ab 0.38) mischt dieser Browser selbst in seine
+Wiedergabe – sofort, ohne den Vorrat von Music Assistant. In Yapaia Go lässt
+sich unter ⚙ → Sprache & Home Assistant auch wählen, dass Beat mischt (Ansage
+später) oder Music Assistant sofort spricht (Musik pausiert).
+
 Die Verbindung läuft über den Ingress von Music Assistant – derselbe Weg,
 den dessen eigene Seite nimmt; es braucht keinen weiteren Port und keine
 eigene Anmeldung. Gesucht wird das Add-on „Music Assistant“ (für

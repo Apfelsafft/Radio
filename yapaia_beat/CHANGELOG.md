@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.9.0
+
+- **Ansagen sofort, auch wenn das Radio über Music Assistant läuft:** Spielt
+  das Radio über „Music Assistant in diesem Browser“ (z. B. „Yapaia iPad“),
+  mischt dieser Browser die Ansagen von Yapaia Go jetzt selbst ein: Musik
+  leiser, Ansage darüber, Musik wieder lauter. Bisher mischte Beat sie in
+  den Stream. Den hat Music Assistant einige Sekunden auf Vorrat, und um so
+  viel kam jede Ansage zu spät (im Test 5–7 s). Jetzt kommt sie, sobald
+  Home Assistant die Sprache erzeugt hat. Braucht Yapaia Go 0.38
+
 ## 1.8.2
 
 - **Songtitel in Music Assistant:** Statt „stream?authSig=…“ zeigt Music
