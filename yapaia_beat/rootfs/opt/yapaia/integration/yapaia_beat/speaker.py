@@ -34,6 +34,11 @@ _LOGGER = logging.getLogger(__name__)
 # radio states in which the speaker should be playing
 ACTIVE = ("playing", "tuning", "following", "scanning", "error")
 STREAM_VALID = timedelta(days=7)
+# a new station must play this long before the player gets the stream again
+REPLAY_AFTER_S = 3.0
+# radio states in which a station is actually on air ("following" = playing
+# with station tracking)
+PLAYING = ("playing", "following")
 
 
 class SpeakerSync:
@@ -48,6 +53,9 @@ class SpeakerSync:
         self._last_volume: int | None = None
         self._last_muted: bool | None = None
         self._push_scheduled = False
+        # station the player was last given (see _station_changed)
+        self._sent_station: str | None = None
+        self._replay: asyncio.TimerHandle | None = None
 
     # ------------------------------------------------------------------ setup
     def start(self, entry: ConfigEntry) -> None:
@@ -152,6 +160,7 @@ class SpeakerSync:
                     self._busy = False
             elif self.casting:
                 await self._volume_to_speaker()
+                self._station_changed()
         if self._again:
             self.hass.async_create_task(self._sync())
 
@@ -168,23 +177,15 @@ class SpeakerSync:
         features = int(state.attributes.get(ATTR_SUPPORTED_FEATURES) or 0)
         if state.state == STATE_OFF and features & MediaPlayerEntityFeature.TURN_ON:
             await self._service("turn_on", target)  # e.g. TVs and AV receivers
+        data = self.coord.data or {}
+        _LOGGER.info("Sending the radio to %s", target)
         try:
-            url = self.stream_url()
+            ok = await self._play(target)
         except NoURLAvailableError:
             await self._fail("Keine Home-Assistant-URL gefunden (Einstellungen → System → Netzwerk)")
             return
-        data = self.coord.data or {}
-        station = (data.get("station") or {}).get("name") or "Yapaia Beat"
-        _LOGGER.info("Sending the radio to %s", target)
-        ok = await self._service(
-            "play_media",
-            target,
-            {
-                "media_content_id": url,
-                "media_content_type": MediaType.MUSIC,
-                "extra": {"title": station, "metadata": {"title": station, "artist": "Yapaia Beat"}},
-            },
-        )
+        if ok:
+            self._sent_station = self._station_key()
         if not ok:
             await self._fail(f"{self._name(target)} konnte den Stream nicht abspielen")
             return
@@ -198,6 +199,70 @@ class SpeakerSync:
         else:
             self._last_volume = data.get("volume")
         self._last_muted = data.get("muted")
+
+    # ------------------------------------------------------------------ station name
+    def _station_key(self) -> str | None:
+        st = (self.coord.data or {}).get("station") or {}
+        return st.get("id") or st.get("name")
+
+    @callback
+    def _station_changed(self) -> None:
+        """Hand the stream over again once a NEW station plays.
+
+        Reported: after switching from SWR3 to Beats Radio, Music Assistant
+        still showed "SWR3 via Yapaia Beat".  The player reads the station
+        name (``icy-name``) only when it connects, and the live stream keeps
+        running across station changes -- so it never learned the new one.
+
+        Waits until the new station has played for a moment: while scanning
+        or skipping through stations this would otherwise restart the player
+        for every one of them.
+        """
+        key = self._station_key()
+        data = self.coord.data or {}
+        if not key or key == self._sent_station or data.get("state") not in PLAYING:
+            if self._replay and (not key or key == self._sent_station):
+                self._replay.cancel()
+                self._replay = None
+            return
+        if self._replay:
+            self._replay.cancel()
+        self._replay = self.hass.loop.call_later(REPLAY_AFTER_S, self._replay_now, key)
+
+    @callback
+    def _replay_now(self, key: str) -> None:
+        self._replay = None
+        data = self.coord.data or {}
+        if self._station_key() != key or data.get("state") not in PLAYING or not self.casting:
+            return
+        self.hass.async_create_task(self._replay_stream(key))
+
+    async def _replay_stream(self, key: str) -> None:
+        async with self._lock:
+            if not self.casting or self._station_key() != key:
+                return
+            self._busy = True
+            try:
+                if await self._play(self.casting):
+                    self._sent_station = key
+            except NoURLAvailableError:
+                pass  # the first hand-over reported this already
+            finally:
+                self._busy = False
+
+    async def _play(self, target: str) -> bool:
+        url = self.stream_url()
+        data = self.coord.data or {}
+        station = (data.get("station") or {}).get("name") or "Yapaia Beat"
+        return await self._service(
+            "play_media",
+            target,
+            {
+                "media_content_id": url,
+                "media_content_type": MediaType.MUSIC,
+                "extra": {"title": station, "metadata": {"title": station, "artist": "Yapaia Beat"}},
+            },
+        )
 
     def stream_url(self) -> str:
         """Absolute, signed URL of the live stream for a player in the LAN."""
