@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.10.2
+
+- **Sendername in Music Assistant beim Senderwechsel:** Nach dem Wechsel von
+  SWR3 auf Beats Radio stand im Player weiter „SWR3 via Yapaia Beat“. Der
+  Player liest den Sendernamen nur beim Verbinden, und der Stream läuft über
+  den Wechsel hinweg. Jetzt bekommt der Player den Stream neu, sobald der neue
+  Sender etwa drei Sekunden spielt — beim schnellen Durchschalten nur einmal,
+  für den letzten. Das gilt für jede Ausgabe, nicht nur für Music Assistant.
+  Dabei gibt es eine kurze Pause, wie beim Umschalten ohnehin.
+- Das Albumbild sucht Music Assistant selbst im Netz zum laufenden Titel;
+  wie schnell es kommt, liegt bei Music Assistant.
+
 ## 1.10.1
 
 - **Music Assistant ließ sich nicht mehr öffnen:** Im Protokoll von Music
