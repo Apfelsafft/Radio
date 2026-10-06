@@ -86,3 +86,20 @@ async def log_stderr(proc: asyncio.subprocess.Process, name: str, level: int = l
 
 def gain_args(flag: str, gain: float | None) -> list[str]:
     return [] if gain is None else [flag, f"{gain:g}"]
+
+
+# Gain steps of the R820T/R828D tuner (RTL-SDR Blog v3/v4 and most sticks), dB.
+R820T_GAINS_DB = [
+    0.0, 0.9, 1.4, 2.7, 3.7, 7.7, 8.7, 12.5, 14.4, 15.7, 16.6, 19.7, 20.7, 22.9, 25.4,
+    28.0, 29.7, 32.8, 33.8, 36.4, 37.2, 38.6, 40.2, 42.1, 43.4, 43.9, 44.5, 48.0, 49.6,
+]
+
+
+def welle_gain_index(db: float) -> int:
+    """welle-cli's ``-g`` is the INDEX of a gain step, not dB.
+
+    Until 1.12.0 the configured gain in dB was passed as is: ``-g 40`` asked
+    for step 40 of 29, welle-cli rejected it, switched its AGC off -- and
+    stayed at the lowest gain.  A fixed gain therefore made DAB unusable.
+    """
+    return min(range(len(R820T_GAINS_DB)), key=lambda i: abs(R820T_GAINS_DB[i] - db))

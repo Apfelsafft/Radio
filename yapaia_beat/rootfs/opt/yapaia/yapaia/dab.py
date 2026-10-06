@@ -20,6 +20,7 @@ import aiohttp
 
 from .config import Options
 from .fm import rtl_power_sweep
+from .procs import R820T_GAINS_DB, welle_gain_index
 from .procs import device_ready, gain_args, kill, stop_sdr
 
 _LOGGER = logging.getLogger(__name__)
@@ -77,8 +78,17 @@ class DabTuner:
 
     band = "dab"
 
-    def __init__(self, opts: Options, channel: str, sid: str | None = None, on_pcm: PcmCallback | None = None) -> None:
+    def __init__(
+        self,
+        opts: Options,
+        channel: str,
+        sid: str | None = None,
+        on_pcm: PcmCallback | None = None,
+        gain_index: int | None = None,
+    ) -> None:
         self.opts = opts
+        # fixed welle-cli gain step; None = configured gain or welle's AGC
+        self.gain_index = gain_index
         self.channel = channel
         self.sid = norm_sid(sid) if sid else None
         self.on_pcm = on_pcm
@@ -106,7 +116,7 @@ class DabTuner:
             "-c", self.channel,
             "-w", str(self.port),
             "-T",
-            *gain_args("-g", self.opts.gain_value),
+            *self._gain_args(),
         ]  # fmt: skip
         await device_ready()
         _LOGGER.debug("Starting %s", " ".join(cmd))
@@ -176,6 +186,23 @@ class DabTuner:
             self.error = "Kein RTL-SDR Stick gefunden oder Stick belegt"
         elif not self.error and self._proc.returncode not in (0, -15):
             self.error = f"welle-cli wurde beendet (Code {self._proc.returncode}) – RTL-SDR Stick prüfen"
+
+    def _gain_args(self) -> list[str]:
+        if self.opts.gain_value is not None:  # fixed gain configured by the user
+            return ["-g", str(welle_gain_index(self.opts.gain_value))]
+        if self.gain_index is not None and self.gain_index >= 0:  # measured per channel
+            return ["-g", str(self.gain_index)]
+        return []  # welle-cli's software AGC
+
+    @property
+    def fic_errors(self) -> int | None:
+        demod = self.mux.get("demodulator") or {}
+        fic = demod.get("fic") or {}
+        value = fic.get("numcrcerrors", demod.get("fic_numcrcerrors"))
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return None
 
     async def _poll(self) -> None:
         assert self._session
@@ -418,3 +445,74 @@ async def scan_dab(
             results.extend(res["services"])
     progress(100, f"DAB-Suchlauf beendet: {len(results)} Sender")
     return results
+
+
+# ---------------------------------------------------------------------- gain
+# Gain steps tried by "DAB-Empfang optimieren" (index into R820T_GAINS_DB):
+# 14.4, 22.9, 29.7, 33.8, 37.2, 40.2, 43.4, 49.6 dB -- and welle's AGC (-1).
+GAIN_CANDIDATES = [8, 13, 16, 18, 20, 22, 24, 28, -1]
+
+
+def bewerte(messung: dict[str, Any]) -> tuple[float, float]:
+    """Sort key, smaller is better: FIC errors per second first (they decide
+    whether a station can be decoded at all), then the SNR."""
+    if not messung.get("synced"):
+        return (float("inf"), 0.0)
+    return (messung["fic_per_s"], -messung["snr"])
+
+
+async def miss_verstaerkung(opts: Options, channel: str, index: int, dauer: float = 6.0) -> dict[str, Any]:
+    """Run welle-cli with one gain step and measure FIC errors and SNR."""
+    tuner = DabTuner(opts, channel, gain_index=index)
+    await tuner.start()
+    start = time.monotonic()
+    try:
+        while time.monotonic() - start < 10 and not tuner.ensemble_label:
+            if not tuner.running and tuner.error:
+                raise RuntimeError(tuner.error)
+            await asyncio.sleep(0.5)
+        if not tuner.ensemble_label:
+            return {"index": index, "synced": False}
+        await asyncio.sleep(1.0)  # let the AGC / sync settle
+        fic0, t0, snrs = tuner.fic_errors, time.monotonic(), []
+        while time.monotonic() - t0 < dauer:
+            await asyncio.sleep(0.5)
+            if tuner.snr is not None:
+                snrs.append(tuner.snr)
+        fic1 = tuner.fic_errors
+        fic = (fic1 - fic0) / dauer if fic0 is not None and fic1 is not None else 0.0
+        snrs.sort()
+        return {
+            "index": index,
+            "synced": True,
+            "fic_per_s": round(max(fic, 0.0), 3),
+            "snr": snrs[len(snrs) // 2] if snrs else 0.0,
+        }
+    finally:
+        await tuner.stop()
+
+
+async def optimiere_dab(
+    opts: Options,
+    channels: list[str],
+    progress: Callable[[float, str], None],
+    cancel: asyncio.Event,
+) -> dict[str, int]:
+    """Best gain step per channel (-1 = AGC stays best)."""
+    out: dict[str, int] = {}
+    schritte = max(1, len(channels) * len(GAIN_CANDIDATES))
+    n = 0
+    for ch in channels:
+        messungen = []
+        for idx in GAIN_CANDIDATES:
+            if cancel.is_set():
+                return out
+            label = "Automatik" if idx < 0 else f"{R820T_GAINS_DB[idx]:g} dB"
+            progress(100 * n / schritte, f"Kanal {ch}: Verstärkung {label} …")
+            messungen.append(await miss_verstaerkung(opts, ch, idx))
+            n += 1
+        best = min(messungen, key=bewerte)
+        if best.get("synced"):
+            out[ch] = best["index"]
+            _LOGGER.info("DAB %s: best gain %s (%s)", ch, best["index"], messungen)
+    return out
