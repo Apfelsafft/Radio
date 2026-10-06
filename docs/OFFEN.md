@@ -28,7 +28,11 @@ Ansätze zum Prüfen:
   Speichern prüfen, ob das Bild vollständig decodierbar ist (PIL `verify()`),
   sonst verwerfen.
 
-### 2. DAB-Empfang softwareseitig verbessern — NÄCHSTER SCHRITT
+### 2. DAB-Empfang softwareseitig verbessern — TEIL 1 ERLEDIGT in 1.12.0
+(Bug -g dB statt Stufe behoben; „DAB-Empfang optimieren“ misst feste Stufe je Kanal.)
+Offen: Rückmeldung am echten Stick; danach ggf. Audiopuffer, Fehlerzähler im UI.
+
+#### (Ursprüngliche Notiz)
 Gemeldet: DAB-Sender werden gefunden, lassen sich aber oft nicht abspielen;
 Antenne am RTL-SDR vermutlich schwach. Hinweis: eine Android-App („Dream DAB“
 o. ä.) wurde allein durch ein Software-Update deutlich besser.
