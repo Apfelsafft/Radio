@@ -1,5 +1,5 @@
 name: Yapaia Beat
-version: "1.12.0"
+version: "1.12.1"
 slug: yapaia_beat
 description: >-
   FM- und DAB+-Radio mit einem RTL-SDR Stick: Sendersuchlauf, Favoriten,
