@@ -417,13 +417,26 @@ class Radio:
         if stations is None:
             favs = set(self.store.favorites)
             stations = sorted(self.store.stations.values(), key=lambda s: s["id"] not in favs)
-        todo = [s for s in stations if not s.get("transient") and not self.logos.has_logo(s["id"])]
+        # Auch Sender MIT Logo: kaputte Bilder werden ersetzt, alte alle zwei
+        # Wochen aufgefrischt (`LogoManager.needs_lookup`).
+        todo = [s for s in stations if not s.get("transient") and self.logos.needs_lookup(s)]
         if not todo:
             return
 
         async def run() -> None:
             changed = False
             for st in todo:
+                if st.get("band") == "dab" and not st.get("eid"):
+                    # vor 1.11.0 gesuchte Sender: Ensemble-Kennung nachtragen,
+                    # sobald der Sender läuft (für RadioDNS)
+                    for _ in range(20):
+                        ens = (getattr(self.tuner, "mux", None) or {}).get("ensemble") or {}
+                        if ens.get("id") and self.station is st:
+                            st["eid"], st["ecc"] = ens.get("id"), ens.get("ecc")
+                            break
+                        if self.station is not st:
+                            break
+                        await asyncio.sleep(1)
                 if await self.logos.ensure(st):
                     changed = True
                     self.changed()

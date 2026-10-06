@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.11.0
+
+- **Senderlogos wie im Autoradio (RadioDNS):** Gemeldet: Logos fehlten auch
+  bei großen Sendern wie DASDING, „Logo online suchen“ brachte nichts Neues.
+  Beat fragt jetzt zuerst RadioDNS — darüber veröffentlichen die Sender ihre
+  Logos selbst, gefunden über die Kennungen, die sie aussenden (DAB+: SId und
+  Ensemble-Kennung, UKW: RDS-PI-Code und Frequenz). Erst danach wird wie
+  bisher nach dem Namen gesucht. Gilt für DAB+ und UKW, braucht Internet.
+- **Kein halbes Logo mehr:** Ein Bild, dessen Übertragung abbrach, wurde
+  trotzdem gespeichert. Jetzt wird jedes Bild vor dem Speichern auf
+  Vollständigkeit geprüft; ein schon gespeichertes kaputtes wird neu geholt.
+- **Logos bleiben aktuell:** Geladene Logos werden alle zwei Wochen und beim
+  Abspielen neu gesucht — bekommt ein Sender ein neues Logo oder geht eines
+  verloren, kommt es wieder. Selbst hochgeladene Logos bleiben unangetastet.
+- Für DAB+-Sender aus einem älteren Suchlauf wird die Ensemble-Kennung beim
+  ersten Abspielen nachgetragen; ein neuer Suchlauf ist nicht nötig.
+- Warum nicht direkt aus dem DAB-Signal: der Decoder (welle-cli) liest nur
+  die Songbilder (Slideshow), nicht den Datendienst mit den Senderlogos.
+
 ## 1.10.2
 
 - **Sendername in Music Assistant beim Senderwechsel:** Nach dem Wechsel von

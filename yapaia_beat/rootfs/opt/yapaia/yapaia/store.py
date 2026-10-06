@@ -147,6 +147,8 @@ class Store:
                 name=res["name"],
                 sid=res["sid"],
                 pty=res.get("pty") or st.get("pty"),
+                eid=res.get("eid") or st.get("eid"),
+                ecc=res.get("ecc") or st.get("ecc"),
                 available=True,
                 updated=now,
             )
