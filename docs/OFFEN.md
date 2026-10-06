@@ -4,7 +4,11 @@
 
 ## Yapaia Beat
 
-### 1. Senderlogos fehlen oder sind abgeschnitten
+### 1. Senderlogos — ERLEDIGT in 1.11.0 (RadioDNS, Bildprüfung, Auffrischen)
+Offen: Rückmeldung des Betreibers, ob z. B. DASDING jetzt ein Logo bekommt.
+In-Band-SPI geht mit welle-cli nicht (nur MOT-Slideshow).
+
+#### (Ursprüngliche Notiz)
 Gemeldet: Logos werden oft nicht gefunden, auch bei großen Sendern (DASDING);
 „Logo online suchen“ bringt nichts Neues; bei einem Sender fehlte die Hälfte
 des Logos (Screenshot: egoFM, nur oberes Viertel sichtbar). „Das Radio in
@@ -24,7 +28,7 @@ Ansätze zum Prüfen:
   Speichern prüfen, ob das Bild vollständig decodierbar ist (PIL `verify()`),
   sonst verwerfen.
 
-### 2. DAB-Empfang softwareseitig verbessern
+### 2. DAB-Empfang softwareseitig verbessern — NÄCHSTER SCHRITT
 Gemeldet: DAB-Sender werden gefunden, lassen sich aber oft nicht abspielen;
 Antenne am RTL-SDR vermutlich schwach. Hinweis: eine Android-App („Dream DAB“
 o. ä.) wurde allein durch ein Software-Update deutlich besser.
