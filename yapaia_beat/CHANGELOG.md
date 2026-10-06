@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.12.1
+
+**DAB im fahrenden Wohnmobil.**
+
+Hinweis aus dem Betrieb: „Denke bitte daran, dass es für den Einsatz in einem
+Wohnmobil gedacht ist. Also das Fahrzeug sich bewegt.“
+
+- **Feste Stufe nur, solange sie taugt:** Die von „DAB-Empfang optimieren“
+  gemessene Verstärkung passt zu dem Ort, an dem gemessen wurde. Nähert man
+  sich einem Sender, übersteuert sie; weiter weg ist sie zu schwach. Wird der
+  Empfang schlecht, schaltet Beat für diesen Kanal zuerst auf die Automatik
+  zurück — erst wenn auch das nicht hilft, greift die Senderverfolgung. Die
+  feste Stufe gilt wieder nach einem Neustart oder einer neuen Optimierung.
+- **Ruhigere Automatik:** welle-cli regelte die Verstärkung alle 50 ms und
+  erhöhte sie bis knapp an die Übersteuerung — das pendelte ständig, und jeder
+  Schritt konnte einen Aussetzer machen. Jetzt alle 250 ms und nur mit
+  Reserve nach oben. Die Automatik folgt dem Ort weiterhin, nur ohne Pendeln.
+
 ## 1.12.0
 
 **Besserer DAB-Empfang ohne neue Hardware.**

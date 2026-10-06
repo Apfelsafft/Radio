@@ -15,6 +15,16 @@ RUN apt-get update \
         libsndfile1-dev libliquid-dev nlohmann-json3-dev
 
 RUN git clone --depth 1 --branch "${WELLE_VERSION}" https://github.com/AlbrechtL/welle.io.git /src/welle \
+    # Ruhigere Verstärkungsautomatik für unterwegs (Beat 1.12.1): welle-cli
+    # regelt sonst alle 50 ms und erhöht bis knapp an die Übersteuerung --
+    # das pendelt zwischen „zu laut" und „lauter" und jeder Schritt kann einen
+    # Aussetzer machen. Jetzt alle 250 ms und nur erhöhen, wenn danach noch
+    # Reserve bleibt (Hysterese). Die Prüfungen brechen den Bau ab, falls sich
+    # welle.io an dieser Stelle ändert.
+    && sed -i 's/std::chrono::milliseconds(50)/std::chrono::milliseconds(250)/' /src/welle/src/input/rtl_sdr.cpp \
+    && sed -i 's/NewMaxValue <= 255/NewMaxValue <= 200/' /src/welle/src/input/rtl_sdr.cpp \
+    && grep -q 'milliseconds(250)' /src/welle/src/input/rtl_sdr.cpp \
+    && grep -q 'NewMaxValue <= 200' /src/welle/src/input/rtl_sdr.cpp \
     && cmake -S /src/welle -B /src/welle/build \
         -DCMAKE_BUILD_TYPE=Release \
         -DBUILD_WELLE_IO=OFF \

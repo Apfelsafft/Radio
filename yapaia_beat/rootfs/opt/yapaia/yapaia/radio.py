@@ -52,6 +52,8 @@ class Radio:
         self._listeners: set[asyncio.Queue[str]] = set()
         self._lock = asyncio.Lock()
         self._scan_cancel = asyncio.Event()
+        # DAB channels whose measured fixed gain proved poor on the road
+        self._dab_agc: set[str] = set()
         self._scan_task: asyncio.Task | None = None
         self._monitor_task: asyncio.Task | None = None
         self._logo_task: asyncio.Task | None = None
@@ -349,6 +351,8 @@ class Radio:
         """Measured gain step for this channel ("DAB-Empfang optimieren"),
         or None for welle-cli's AGC.  A gain set in the add-on options wins
         (see DabTuner._gain_args)."""
+        if channel in self._dab_agc:
+            return None  # fell back to the AGC during this drive
         value = (self.store.settings.get("dab_gain") or {}).get(channel)
         return value if isinstance(value, int) and value >= 0 else None
 
@@ -411,6 +415,7 @@ class Radio:
                         res = await optimiere_dab(self.opts, self._dab_channels(), progress, self._scan_cancel)
                         gains = dict(self.store.settings.get("dab_gain") or {})
                         gains.update(res)
+                        self._dab_agc.difference_update(res)
                         self.store.settings["dab_gain"] = gains
                         self.store.save()
                     else:
@@ -593,8 +598,28 @@ class Radio:
             return
         if self._follow_task and not self._follow_task.done():
             return
+        if isinstance(tuner, DabTuner) and tuner.gain_index is not None and tuner.gain_index >= 0 and self.opts.gain_value is None:
+            # ─── UNTERWEGS: ERST DIE AUTOMATIK, DANN DIE SENDERSUCHE ───────
+            # Die gemessene feste Stufe passt zu dem Ort, an dem gemessen
+            # wurde. Im fahrenden Wohnmobil übersteuert sie nahe am Sender und
+            # ist weiter weg zu schwach. Wird der Empfang schlecht, zuerst auf
+            # die (ruhigere) Automatik zurück -- bis zum nächsten Neustart oder
+            # einer neuen Optimierung.
+            self._dab_agc.add(tuner.channel)
+            self._bad_since = None
+            _LOGGER.info("DAB %s: fixed gain gives poor reception here, back to AGC", tuner.channel)
+            self._follow_task = asyncio.create_task(self._agc_restart(st))
+            return
         # separate task, so user actions can interrupt the search right away
         self._follow_task = asyncio.create_task(self._follow(tuner, st))
+
+    async def _agc_restart(self, st: dict[str, Any]) -> None:
+        async with self._lock:
+            if self.station is not st or self.state != "playing":
+                return
+            await self._stop_tuner()
+            await self._start_dab(st["channel"], st["sid"])
+        self.changed()
 
     async def _follow(self, tuner: Tuner, st: dict[str, Any]) -> None:
         cur_q = tuner.quality
