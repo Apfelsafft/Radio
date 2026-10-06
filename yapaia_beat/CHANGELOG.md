@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.12.0
+
+**Besserer DAB-Empfang ohne neue Hardware.**
+
+Gemeldet: DAB-Sender werden gefunden, lassen sich aber oft nicht abspielen.
+
+- **Fehler behoben — feste Verstärkung bei DAB:** welle-cli erwartet bei der
+  Verstärkung die Nummer einer Stufe (0–28), Beat übergab den Wert in dB.
+  Wer in der Konfiguration `rtl_gain` auf eine Zahl (z. B. 40) gestellt
+  hatte, bekam bei DAB die KLEINSTE Verstärkung — dann wird kaum ein Sender
+  abspielbar. Der dB-Wert wird jetzt auf die passende Stufe umgerechnet.
+- **Neu: „DAB-Empfang optimieren“** (Reiter Suchlauf). Die Automatik von
+  welle-cli verstellt die Verstärkung bis zu 20-mal pro Sekunde; bei
+  schwachem Empfang macht jeder Sprung einen Aussetzer. Die Optimierung
+  probiert je Kanal deiner Sender acht feste Stufen und die Automatik,
+  misst Fehler und Signal-Rausch-Abstand und merkt sich das Beste (etwa eine
+  Minute pro Kanal). Danach spielt jeder Kanal mit seiner festen Stufe. Nach
+  einem Ortswechsel oder mit anderer Antenne erneut ausführen.
+- Eine in der Konfiguration fest eingestellte Verstärkung hat Vorrang vor
+  der gemessenen.
+
 ## 1.11.0
 
 - **Senderlogos wie im Autoradio (RadioDNS):** Gemeldet: Logos fehlten auch

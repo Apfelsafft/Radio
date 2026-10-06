@@ -12,7 +12,7 @@ from typing import Any
 
 from .audio import AudioOutput
 from .config import Options
-from .dab import DabTuner, dab_candidates, norm_sid, probe_dab, scan_dab, split_dls
+from .dab import DabTuner, dab_candidates, norm_sid, optimiere_dab, probe_dab, scan_dab, split_dls
 from .fm import FM_START, FM_STOP, FmTuner, fm_candidates, probe_fm, rtl_power_sweep, scan_fm
 from .logos import LogoManager
 from .store import Store, display_name, fm_station_id, normalize_name
@@ -123,7 +123,7 @@ class Radio:
             await cur.set_service(sid)  # same ensemble: keep the receiver running
             return
         await self._stop_tuner()
-        tuner = DabTuner(self.opts, channel, sid, on_pcm=self.audio.write)
+        tuner = DabTuner(self.opts, channel, sid, on_pcm=self.audio.write, gain_index=self.dab_gain(channel))
         await tuner.start()
         self.tuner = tuner
 
@@ -344,12 +344,31 @@ class Radio:
         self.store.settings["was_playing"] = True
         self.store.save()
 
+    # ------------------------------------------------------------------ DAB gain
+    def dab_gain(self, channel: str) -> int | None:
+        """Measured gain step for this channel ("DAB-Empfang optimieren"),
+        or None for welle-cli's AGC.  A gain set in the add-on options wins
+        (see DabTuner._gain_args)."""
+        value = (self.store.settings.get("dab_gain") or {}).get(channel)
+        return value if isinstance(value, int) and value >= 0 else None
+
+    def _dab_channels(self) -> list[str]:
+        """Channels to optimise: those of favourites first, then all known."""
+        favs = [self.store.stations[f] for f in self.store.favorites if f in self.store.stations]
+        rest = list(self.store.stations.values())
+        out: list[str] = []
+        for st in favs + rest:
+            ch = st.get("channel") if st.get("band") == "dab" else None
+            if ch and ch not in out:
+                out.append(ch)
+        return out
+
     # ------------------------------------------------------------------ scanning
     def start_scan(self, band: str) -> None:
         if self.scan["running"]:
             raise RuntimeError("Suchlauf läuft bereits")
-        if band not in ("fm", "dab", "all"):
-            raise ValueError("band muss fm, dab oder all sein")
+        if band not in ("fm", "dab", "all", "dab-optimize"):
+            raise ValueError("band muss fm, dab, all oder dab-optimize sein")
         self._scan_cancel.clear()
         self._scan_task = asyncio.create_task(self._run_scan(band))
 
@@ -375,6 +394,7 @@ class Radio:
             self.state = "scanning"
             self.changed()
             bands = ["fm", "dab"] if band == "all" else [band]
+            optimize = band == "dab-optimize"
             found = 0
             try:
                 for i, b in enumerate(bands):
@@ -387,15 +407,28 @@ class Radio:
                         res = await scan_fm(self.opts, progress, self._scan_cancel)
                         if not self._scan_cancel.is_set() or res:
                             self.store.merge_fm(res)
+                    elif b == "dab-optimize":
+                        res = await optimiere_dab(self.opts, self._dab_channels(), progress, self._scan_cancel)
+                        gains = dict(self.store.settings.get("dab_gain") or {})
+                        gains.update(res)
+                        self.store.settings["dab_gain"] = gains
+                        self.store.save()
                     else:
                         res = await scan_dab(self.opts, progress, self._scan_cancel)
                         if not self._scan_cancel.is_set() or res:
                             self.store.merge_dab(res)
                     found += len(res)
                     self.scan["found"] = found
-                self.scan["message"] = (
-                    "Suchlauf abgebrochen" if self._scan_cancel.is_set() else f"Suchlauf beendet – {found} Sender gefunden"
-                )
+                if optimize:
+                    self.scan["message"] = (
+                        "Optimierung abgebrochen"
+                        if self._scan_cancel.is_set()
+                        else f"DAB-Empfang optimiert – {found} Kanäle mit fester Verstärkung"
+                    )
+                else:
+                    self.scan["message"] = (
+                        "Suchlauf abgebrochen" if self._scan_cancel.is_set() else f"Suchlauf beendet – {found} Sender gefunden"
+                    )
             except Exception as err:  # noqa: BLE001 – report any failure to the UI
                 _LOGGER.exception("Scan failed")
                 self.scan["error"] = str(err)
