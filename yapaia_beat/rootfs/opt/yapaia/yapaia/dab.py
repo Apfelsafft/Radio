@@ -355,9 +355,13 @@ async def probe_dab(opts: Options, channel: str, max_time: float = 12.0, want_si
                 break
     finally:
         await tuner.stop()
+    ens = tuner.mux.get("ensemble") or {}
     services = [
         {
             "sid": norm_sid(s.get("sid")),
+            # für RadioDNS (Senderlogos): Ensemble-Kennung und Ländercode
+            "eid": ens.get("id"),
+            "ecc": ens.get("ecc"),
             "name": _label(s.get("label")),
             "pty": s.get("ptystring") or None,
             "channel": channel,

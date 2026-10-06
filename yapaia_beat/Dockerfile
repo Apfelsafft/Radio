@@ -46,7 +46,7 @@ RUN apt-get update \
         rtl-sdr librtlsdr0 \
         libfftw3-single3 libfaad2 libmpg123-0 libmp3lame0 libsndfile1 libliquid-dev \
         lame mpg123 pulseaudio-utils \
-        python3 python3-numpy python3-scipy python3-aiohttp \
+        python3 python3-numpy python3-scipy python3-aiohttp python3-dnspython \
         ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 

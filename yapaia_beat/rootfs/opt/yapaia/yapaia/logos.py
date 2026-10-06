@@ -2,8 +2,15 @@
 
 Order of preference:
 1. logo uploaded by the user in the web UI
-2. logo found online (radio-browser.info, cached in /data/logos)
+2. logo found online, cached in /data/logos:
+   a) RadioDNS -- the broadcaster's own logo, found by the identifiers the
+      station transmits (DAB SId/EId, FM PI), like car radios do
+   b) radio-browser.info by name
 3. generated placeholder (SVG with the station initials)
+
+Cached logos are checked for completeness (a half-transferred image was
+saved as a "half logo") and looked up again every REFRESH seconds, so a new
+logo of the station arrives and a lost one comes back.
 """
 
 from __future__ import annotations
@@ -11,6 +18,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import logging
+import os
 import time
 from html import escape
 from pathlib import Path
@@ -19,6 +27,7 @@ from urllib.parse import quote
 
 import aiohttp
 
+from . import radiodns
 from .store import display_name, normalize_name
 
 _LOGGER = logging.getLogger(__name__)
@@ -42,6 +51,8 @@ EXT = {
 }
 CTYPE = {v: k for k, v in EXT.items()}
 RETRY_AFTER = 24 * 3600
+REFRESH = 14 * 24 * 3600
+SI_CACHE = 24 * 3600
 PALETTE = ["#ff6b35", "#f7c548", "#2ec4b6", "#e71d36", "#8338ec", "#3a86ff", "#06d6a0", "#ef476f"]
 
 
@@ -54,6 +65,7 @@ class LogoManager:
         self.country = (country or "").upper()
         self._lock = asyncio.Lock()
         self._session: aiohttp.ClientSession | None = None
+        self._si: dict[str, tuple[float, bytes]] = {}
 
     async def close(self) -> None:
         if self._session:
@@ -73,6 +85,18 @@ class LogoManager:
     def version(self, station_id: str) -> int:
         p = self.path(station_id)
         return int(p.stat().st_mtime) if p else 0
+
+    def needs_lookup(self, station: dict[str, Any]) -> bool:
+        """No logo, a broken cached one, or a cached one due for a refresh."""
+        sid = station["id"]
+        if self._find(self.dir / "custom", sid):
+            return False
+        p = self._find(self.dir, sid)
+        if not p:
+            return True
+        if not image_complete(p.read_bytes(), self.content_type(p)):
+            return True
+        return time.time() - p.stat().st_mtime > REFRESH
 
     def has_logo(self, station_id: str) -> bool:
         return self.path(station_id) is not None
@@ -118,25 +142,85 @@ class LogoManager:
             p.unlink()
 
     # ------------------------------------------------------------------
+    def _cached_ok(self, station_id: str) -> bool:
+        """Is the cached (not user-uploaded) logo a complete image?"""
+        p = self._find(self.dir, station_id)
+        if not p:
+            return False
+        if image_complete(p.read_bytes(), self.content_type(p)):
+            return True
+        _LOGGER.info("Logo for %s is incomplete -- fetching it again", station_id)
+        p.unlink()
+        return False
+
     async def ensure(self, station: dict[str, Any], force: bool = False) -> bool:
-        """Look up a logo online if we have none.  Returns True if changed."""
+        """Look up a logo online if we have none, it is broken or due for a
+        refresh.  Returns True if changed."""
         sid = station["id"]
-        if not self.online or (self.path(sid) and not force):
+        if not self.online:
+            return False
+        if self._find(self.dir / "custom", sid) and not force:
+            return False  # the user's own logo always wins
+        have = self._cached_ok(sid)
+        due = have and time.time() - self.version(sid) > REFRESH
+        if have and not due and not force:
             return False
         if not force and time.time() - station.get("logo_lookup", 0) < RETRY_AFTER:
             return False
         station["logo_lookup"] = time.time()
         async with self._lock:
-            try:
-                url = await self._search(station)
-                if url and await self._download(url, sid):
-                    station["logo_source"] = url
-                    _LOGGER.info("Logo for %s: %s", display_name(station), url)
-                    return True
-            except (aiohttp.ClientError, asyncio.TimeoutError) as err:
-                _LOGGER.debug("Logo lookup failed for %s: %s", sid, err)
-                station["logo_lookup"] = time.time() - RETRY_AFTER + 600  # retry in 10 min
+            for url in await self._candidates(station):
+                try:
+                    if await self._download(url, sid):
+                        station["logo_source"] = url
+                        _LOGGER.info("Logo for %s: %s", display_name(station), url)
+                        return True
+                except (aiohttp.ClientError, asyncio.TimeoutError) as err:
+                    _LOGGER.debug("Logo download failed for %s: %s", sid, err)
+            if due and have:
+                # nothing new found -- keep the old one, look again next time
+                os.utime(self._find(self.dir, sid))  # type: ignore[arg-type]
         return False
+
+    async def _candidates(self, station: dict[str, Any]) -> list[str]:
+        out: list[str] = []
+        try:
+            url = await self._radiodns(station)
+            if url:
+                out.append(url)
+        except (aiohttp.ClientError, asyncio.TimeoutError) as err:
+            _LOGGER.debug("RadioDNS failed for %s: %s", station["id"], err)
+        try:
+            url = await self._search(station)
+            if url:
+                out.append(url)
+        except (aiohttp.ClientError, asyncio.TimeoutError) as err:
+            _LOGGER.debug("Logo lookup failed for %s: %s", station["id"], err)
+            station["logo_lookup"] = time.time() - RETRY_AFTER + 600  # retry in 10 min
+        return out
+
+    async def _radiodns(self, station: dict[str, Any]) -> str | None:
+        fqdn = (
+            radiodns.dab_fqdn(station, self.country)
+            if station.get("band") == "dab"
+            else radiodns.fm_fqdn(station, self.country)
+        )
+        if not fqdn:
+            return None
+        host = await radiodns.spi_host(fqdn)
+        if not host:
+            return None
+        url = radiodns.si_url(*host)
+        cached = self._si.get(url)
+        if cached and time.time() - cached[0] < SI_CACHE:
+            xml = cached[1]
+        else:
+            async with self._http().get(url) as r:
+                if r.status != 200:
+                    return None
+                xml = await r.content.read(20_000_000)
+            self._si[url] = (time.time(), xml)
+        return radiodns.logo_aus_si(xml, radiodns.bearer_ids(station, self.country))
 
     def _http(self) -> aiohttp.ClientSession:
         if self._session is None or self._session.closed:
@@ -192,6 +276,9 @@ class LogoManager:
             data = await r.content.read(3_000_001)
             if len(data) > 3_000_000 or len(data) < 64:
                 return False
+            if not image_complete(data, CTYPE.get(ext, "")):
+                _LOGGER.debug("Logo from %s is incomplete", url)
+                return False
         self.remove_cached(station_id)
         (self.dir / f"{station_id}{ext}").write_bytes(data)
         return True
@@ -220,3 +307,20 @@ def _best_match(wanted: str, candidates: list[dict[str, Any]]) -> dict[str, Any]
         return None
     scored.sort(key=lambda s: (s[0], s[1]), reverse=True)
     return scored[0][2] if scored[0][0] >= 30 else None
+
+
+def image_complete(data: bytes, content_type: str) -> bool:
+    """Is this a whole image?  A transfer that broke off half-way still
+    starts like an image -- and was shown as a logo cut off in the middle."""
+    tail = data.rstrip(b"\x00 \r\n\t")
+    if content_type == "image/png":
+        return data.startswith(b"\x89PNG") and b"IEND" in data[-32:]
+    if content_type in ("image/jpeg", "image/jpg"):
+        return data.startswith(b"\xff\xd8") and tail.endswith(b"\xff\xd9")
+    if content_type == "image/gif":
+        return data.startswith(b"GIF8") and tail.endswith(b"\x3b")
+    if content_type == "image/webp":
+        return data[:4] == b"RIFF" and data[8:12] == b"WEBP" and int.from_bytes(data[4:8], "little") + 8 <= len(data)
+    if content_type == "image/svg+xml":
+        return b"</svg>" in data[-200:].lower()
+    return True
