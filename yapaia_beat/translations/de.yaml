@@ -52,7 +52,21 @@ configuration:
     name: MP3-Stream Bitrate (kbit/s)
   rtl_device_index:
     name: RTL-SDR Geräteindex
-    description: Nur bei mehreren Sticks relevant.
+    description: Der Stick, auf dem gehört wird. Nur bei mehreren Sticks relevant.
+  second_stick:
+    name: Zweiter Stick
+    description: >-
+      Ist ein zweiter RTL-SDR-Stick eingesteckt: „suche" – er macht Suchlauf und
+      Senderverfolgung im Hintergrund, das Radio spielt dabei auf dem ersten weiter
+      (funktioniert auch, wenn er schwächer empfängt; empfängt er deutlich schlechter,
+      sucht Beat wie mit einem Stick). „gleichwertig" – beide Sticks haben gleich guten
+      Empfang (eigene Antenne oder Antennenweiche): ein neuer Sender läuft zuerst auf dem
+      freien Stick an und übernimmt dann ohne Pause. „aus" – zweiten Stick nicht nutzen.
+  background_scan_minutes:
+    name: Hintergrund-Suchlauf (Minuten)
+    description: >-
+      Mit zweitem Stick sucht Beat während der Wiedergabe alle so viele Minuten
+      UKW und DAB+ neu ab – unterwegs bleibt die Senderliste aktuell. 0 = aus.
   resume_last_station:
     name: Letzten Sender fortsetzen
     description: Nach einem Neustart den zuletzt gespielten Sender wieder abspielen.

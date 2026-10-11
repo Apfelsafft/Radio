@@ -11,6 +11,7 @@ import collections
 import contextlib
 import itertools
 import logging
+import os
 import re
 import time
 from collections.abc import Awaitable, Callable
@@ -118,10 +119,14 @@ class DabTuner:
             "-T",
             *self._gain_args(),
         ]  # fmt: skip
-        await device_ready()
-        _LOGGER.debug("Starting %s", " ".join(cmd))
+        await device_ready(self.opts.rtl_device_index)
+        _LOGGER.debug("Starting %s (stick %d)", " ".join(cmd), self.opts.rtl_device_index)
+        # welle-cli has no option for the stick: it takes the first one it can
+        # open. The Dockerfile patches it to honour YAPAIA_RTL_DEVICE, so with
+        # two sticks each receiver uses the stick it was given.
+        env = {**os.environ, "YAPAIA_RTL_DEVICE": str(self.opts.rtl_device_index)}
         self._proc = await asyncio.create_subprocess_exec(
-            *cmd, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE
+            *cmd, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE, env=env
         )
         self._session = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=None, connect=3))
         self.running = True
@@ -158,7 +163,7 @@ class DabTuner:
         for t in self._tasks:
             t.cancel()
         await asyncio.gather(*self._tasks, return_exceptions=True)
-        await asyncio.gather(kill(self._decoder), stop_sdr(self._proc))
+        await asyncio.gather(kill(self._decoder), stop_sdr(self._proc, self.opts.rtl_device_index))
         if self._session:
             await self._session.close()
         self._tasks = []

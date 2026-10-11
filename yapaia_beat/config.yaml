@@ -1,8 +1,8 @@
 name: Yapaia Beat
-version: "1.12.1"
+version: "1.13.0"
 slug: yapaia_beat
 description: >-
-  FM- und DAB+-Radio mit einem RTL-SDR Stick: Sendersuchlauf, Favoriten,
+  FM- und DAB+-Radio mit einem oder zwei RTL-SDR Sticks: Sendersuchlauf, Favoriten,
   Senderlogos, RDS/DLS-Infos und automatische Senderverfolgung.
 url: https://github.com/apfelsafft/radio
 arch:
@@ -44,6 +44,8 @@ options:
   dab_prefilter: true
   mp3_bitrate: "128"
   rtl_device_index: 0
+  second_stick: suche
+  background_scan_minutes: 30
   resume_last_station: true
   standby_minutes: 10
   announce_music_level: 20
@@ -67,6 +69,8 @@ schema:
   dab_prefilter: bool
   mp3_bitrate: list(64|96|128|160|192|256|320)
   rtl_device_index: int(0,9)
+  second_stick: list(aus|suche|gleichwertig)
+  background_scan_minutes: int(0,240)
   resume_last_station: bool
   standby_minutes: int(0,240)
   announce_music_level: int(0,100)

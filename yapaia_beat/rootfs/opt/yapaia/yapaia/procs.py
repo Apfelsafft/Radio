@@ -47,29 +47,30 @@ async def kill(
 # SIGINT (their clean shutdown path) and the next one waits a moment.
 # --------------------------------------------------------------------------
 DEVICE_COOLDOWN = 1.5
-_device_released = 0.0
+# per stick (librtlsdr device index): with a second stick (Beat 1.13.0) one
+# stick may be opened while the other is still resting
+_device_released: dict[int, float] = {}
 
 
-async def device_ready() -> None:
+async def device_ready(index: int = 0) -> None:
     """Wait until the stick has rested since the last program released it."""
-    wait = _device_released + DEVICE_COOLDOWN - time.monotonic()
+    wait = _device_released.get(index, 0.0) + DEVICE_COOLDOWN - time.monotonic()
     if wait > 0:
         await asyncio.sleep(wait)
 
 
-def device_released() -> None:
-    global _device_released
-    _device_released = time.monotonic()
+def device_released(index: int = 0) -> None:
+    _device_released[index] = time.monotonic()
 
 
-async def stop_sdr(proc: asyncio.subprocess.Process | None) -> None:
+async def stop_sdr(proc: asyncio.subprocess.Process | None, index: int = 0) -> None:
     """Stop an SDR program cleanly so it releases the stick properly."""
     if proc is None:
         return
     was_running = proc.returncode is None
     await kill(proc, timeout=4.0, first=signal.SIGINT)
     if was_running or proc.returncode is not None:
-        device_released()
+        device_released(index)
 
 
 async def log_stderr(proc: asyncio.subprocess.Process, name: str, level: int = logging.DEBUG) -> None:

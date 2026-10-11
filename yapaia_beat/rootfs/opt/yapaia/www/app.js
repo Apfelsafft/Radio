@@ -117,7 +117,15 @@ function render(s) {
   $("#scan-bar").style.width = `${s.scan.running || s.scan.message ? s.scan.progress : 0}%`;
   $("#scan-msg").textContent = s.scan.message || "";
   $("#scan-cancel").hidden = !s.scan.running;
-  $$("[data-scan]").forEach((b) => (b.disabled = s.scan.running));
+  // an automatic background scan gives way to one started by hand
+  $$("[data-scan]").forEach((b) => (b.disabled = s.scan.running && !s.scan.auto));
+  const stick = $("#stick-info");
+  stick.hidden = !(s.sticks > 1);
+  if (s.sticks > 1) {
+    const busy = { scan: "sucht Sender", follow: "sucht für die Senderverfolgung", switch: "stimmt den neuen Sender ab" }[s.second_stick_busy] || "bereit";
+    const mode = s.second_stick === "gleichwertig" ? "Suche und Umschalten ohne Pause" : "Suche im Hintergrund";
+    stick.textContent = `Zweiter Stick: ${mode} – ${busy}.` + (s.second_stick_hint ? ` ⚠ ${s.second_stick_hint}` : "");
+  }
   $("#stream-info").innerHTML = `Lokale Wiedergabe über Home Assistant Audio: <b>${s.local_audio ? "aktiv" : "aus"}</b> · MP3-Stream: <code>/stream.mp3</code> (${s.stream_clients} Hörer)`;
 
   const favKey = JSON.stringify(s.favorites.map((f) => [f.id, f.name, f.logo_url])) + (s.active_favorite || "");

@@ -38,7 +38,31 @@ Boot oder Ferienhaus, weil es **komplett offline** funktioniert.
   USB-3-Ports, die im 2,4-GHz- und UKW-Bereich stören können).
 
 Ein Stick kann immer nur eine Sache gleichzeitig: während eines Suchlaufs oder
-einer Senderverfolgungs-Suche ist die Wiedergabe kurz unterbrochen.
+einer Senderverfolgungs-Suche ist die Wiedergabe kurz unterbrochen — außer mit
+einem zweiten Stick.
+
+### Zweiter Stick
+
+Ein zweiter RTL-SDR-Stick wird beim Start und danach jede Minute erkannt —
+einfach einstecken. Dann gilt (Option `second_stick`):
+
+- **`suche`** (Standard): Der zweite Stick macht **Suchläufe** und die Suche der
+  **Senderverfolgung**, während das Radio auf dem ersten weiterspielt. Beim
+  Hören sucht Beat außerdem alle `background_scan_minutes` Minuten UKW und DAB+
+  neu ab — unterwegs zeigt die Senderliste, was hier zu empfangen ist. Vor jeder
+  Verfolgungs-Suche misst Beat den laufenden Sender auf beiden Sticks; empfängt
+  der zweite deutlich schlechter (keine oder eine schwache Antenne), sucht Beat
+  wie mit einem Stick und zeigt einen Hinweis.
+- **`gleichwertig`**: wie `suche`, und zusätzlich startet jeder **Senderwechsel**
+  — von Hand oder durch die Verfolgung, auch zwischen UKW und DAB+ — zuerst auf
+  dem freien Stick. Erst wenn dort Ton kommt, wird umgeschaltet: keine Pause,
+  kein Rauschen. Dafür müssen **beide Sticks gleich guten Empfang** haben
+  (jeder eine eigene Antenne, oder eine Antenne über eine Antennenweiche/
+  Splitter für FM und DAB).
+- **`aus`**: der zweite Stick wird nicht benutzt.
+
+„DAB-Empfang optimieren" läuft weiterhin auf dem Stick, auf dem gehört wird,
+und unterbricht die Wiedergabe.
 
 ## Installation
 
@@ -373,7 +397,8 @@ sucht Yapaia Beat in dieser Reihenfolge:
 3. Wenn erlaubt: **Bandsuche** nach PI-Code bzw. Service-ID.
 
 Findet sich nichts Besseres, bleibt der Sender eingestellt und die Suche
-pausiert zwei Minuten. Nach einem Ortswechsel lohnt sich ein neuer Suchlauf –
+pausiert zwei Minuten (mit zweitem Stick, ohne Unterbrechung, eine Minute).
+Mit zweitem Stick spielt der Sender während der ganzen Suche weiter. Nach einem Ortswechsel lohnt sich ein neuer Suchlauf –
 Favoriten bleiben erhalten und werden automatisch zugeordnet.
 
 ## Optionen
@@ -394,7 +419,9 @@ Favoriten bleiben erhalten und werden automatisch zugeordnet.
 | `fm_deemphasis_us` | 50 µs (Europa) / 75 µs (Amerika) |
 | `dab_prefilter` | DAB-Schnellsuchlauf |
 | `mp3_bitrate` | Bitrate des MP3-Streams |
-| `rtl_device_index` | Bei mehreren Sticks |
+| `rtl_device_index` | Der Stick, auf dem gehört wird (bei mehreren Sticks) |
+| `second_stick` | Zweiter Stick: `suche` (Standard), `gleichwertig` oder `aus` — siehe „Zweiter Stick" |
+| `background_scan_minutes` | Mit zweitem Stick: Suchlauf im Hintergrund alle n Minuten (0 = aus) |
 | `resume_last_station` | Nach Neustart weiterspielen |
 | `install_integration` | Integration automatisch installieren/aktualisieren |
 

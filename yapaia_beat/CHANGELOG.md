@@ -1,5 +1,37 @@
 # Changelog
 
+## 1.13.0
+
+**Zweiter RTL-SDR-Stick: Suchlauf und Senderverfolgung im Hintergrund.**
+
+Gewünscht: „Ich habe noch einen zweiten rtl-sdr Stick. Können wir den
+zusätzlich einbinden um bspw. einen Sendersuchlauf oder Senderverfolgung im
+Hintergrund zu ermöglichen? Oder ein schnelles Umschalten zwischen DAB und FM?“
+
+- **Einfach einstecken.** Beat erkennt einen zweiten Stick beim Start und
+  danach jede Minute. Neue Option „Zweiter Stick“ (Standard „suche“).
+- **Suchlauf ohne Pause:** UKW-, DAB+- und Komplett-Suchlauf laufen auf dem
+  zweiten Stick, das Radio spielt weiter, Sender lassen sich währenddessen
+  wechseln.
+- **Senderverfolgung ohne Pause:** Wird der Empfang schwach, misst der zweite
+  Stick die Alternativen (andere Frequenzen, andere DAB-Kanäle, das andere
+  Band), während der erste weiterspielt. Bisher war das Radio dabei bis zu
+  einer halben Minute stumm. Findet sich nichts, versucht Beat es schon nach
+  einer Minute wieder statt nach zwei.
+- **Hintergrund-Suchlauf unterwegs:** Beim Hören sucht Beat alle 30 Minuten
+  (Option „Hintergrund-Suchlauf“) UKW und DAB+ neu ab. Er tritt zurück, sobald
+  die Senderverfolgung den Stick braucht oder man selbst einen Suchlauf
+  startet.
+- **Schnelles Umschalten (Einstellung „gleichwertig“):** Jeder Senderwechsel
+  — auch UKW ↔ DAB+ — startet zuerst auf dem freien Stick; erst wenn dort Ton
+  kommt, wird umgeschaltet. Keine Pause, keine Wartezeit für den Stick. Nur
+  wählen, wenn beide Sticks gleich guten Empfang haben (eigene Antenne oder
+  Antennenweiche).
+- **Ohne Antenne am zweiten Stick:** Vor jeder Verfolgungs-Suche misst Beat
+  den laufenden Sender auf beiden Sticks. Empfängt der zweite deutlich
+  schlechter, sucht Beat wie bisher mit einem Stick und zeigt im Suchlauf-Tab
+  „Antenne prüfen“.
+
 ## 1.12.1
 
 **DAB im fahrenden Wohnmobil.**

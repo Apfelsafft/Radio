@@ -15,7 +15,7 @@ from typing import Any
 from .config import Options
 from .dsp import MPX_RATE, FmStereoDecoder
 from .procs import device_ready, device_released, gain_args, kill, stop_sdr
-from .usb import reset_sticks
+from .usb import find_sticks, reset_sticks
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -159,7 +159,7 @@ class FmTuner:
             "-f", f"{self.freq * 1e6:.0f}",
             "-",
         ]  # fmt: skip
-        await device_ready()
+        await device_ready(self.opts.rtl_device_index)
         _LOGGER.debug("Starting %s", " ".join(cmd))
         self._rtl = await asyncio.create_subprocess_exec(
             *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
@@ -187,7 +187,7 @@ class FmTuner:
         self.running = False
         for t in self._tasks:
             t.cancel()
-        await asyncio.gather(stop_sdr(self._rtl), kill(self._redsea))
+        await asyncio.gather(stop_sdr(self._rtl, self.opts.rtl_device_index), kill(self._redsea))
         self._tasks = []
 
     # ------------------------------------------------------------------
@@ -327,7 +327,7 @@ async def rtl_power_sweep(opts: Options, start_mhz: float, stop_mhz: float, bin_
         *gain_args("-g", opts.gain_value if opts.gain_value is not None else 30),
         "-",
     ]  # fmt: skip
-    await device_ready()
+    await device_ready(opts.rtl_device_index)
     _LOGGER.debug("Starting %s", " ".join(cmd))
     proc = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
     lines: list[str] = []
@@ -353,8 +353,11 @@ async def rtl_power_sweep(opts: Options, start_mhz: float, stop_mhz: float, bin_
         except asyncio.TimeoutError:
             await kill(proc)
             readers.cancel()
-            reset_sticks()
-    device_released()
+            # With two sticks the reset would also hit the one that is
+            # playing -- the other one recovers through the radio's own path.
+            if len(find_sticks()) <= 1:
+                reset_sticks()
+    device_released(opts.rtl_device_index)
     text = "".join(err_lines)
     spectrum = _parse_rtl_power("".join(lines))
     if not spectrum:
