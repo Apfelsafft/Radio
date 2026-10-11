@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import dataclasses
 import json
 import logging
 import time
@@ -16,10 +17,19 @@ from .dab import DabTuner, dab_candidates, norm_sid, optimiere_dab, probe_dab, s
 from .fm import FM_START, FM_STOP, FmTuner, fm_candidates, probe_fm, rtl_power_sweep, scan_fm
 from .logos import LogoManager
 from .store import Store, display_name, fm_station_id, normalize_name
-from .usb import reset_sticks
+from .usb import find_sticks, reset_sticks
 
 _LOGGER = logging.getLogger(__name__)
 RECOVER_INTERVAL = 15  # seconds between attempts to get a lost stick back
+# ─── ZWEITER STICK (1.13.0) ─────────────────────────────────────────────────
+# How long a new receiver on the free stick may take to deliver sound before
+# the old one is let go ("gleichwertig").  DAB needs to sync first.
+SWITCH_WAIT = {"fm": 6.0, "dab": 15.0}
+STICK_CHECK_INTERVAL = 60  # s between looks for a newly plugged-in stick
+FIRST_BG_SCAN_DELAY = 120  # s after start before the first background scan
+# The second stick measuring the CURRENT station this much worse than the
+# first one: it has no (or a poor) antenna -- search the classic way.
+SPARE_WORSE_BY = 15
 
 Tuner = FmTuner | DabTuner
 
@@ -67,9 +77,18 @@ class Radio:
         self._idle_since: float | None = None
         self._recover_error: str | None = None
         self._recover_tries = 0
+        # RTL-SDR sticks (librtlsdr indices); the first one is the configured
+        self.sticks: list[int] = [opts.rtl_device_index]
+        self._last_stick = opts.rtl_device_index  # the one listened on
+        self._helper: str | None = None  # what the second stick does: scan | follow | switch
+        self._scan_auto = False
+        self._stick_check_at = 0.0
+        self._bg_scan_at = time.monotonic() + FIRST_BG_SCAN_DELAY
+        self.spare_hint: str | None = None
 
     # ------------------------------------------------------------------ lifecycle
     async def start(self) -> None:
+        self.detect_sticks()
         self._monitor_task = asyncio.create_task(self._monitor())
         self.lookup_logos()
         last = self.store.settings.get("last_station")
@@ -114,23 +133,106 @@ class Radio:
             await tuner.stop()
 
     async def _start_fm(self, freq: float) -> None:
-        await self._stop_tuner()
-        tuner = FmTuner(self.opts, freq, on_pcm=self.audio.write)
-        await tuner.start()
-        self.tuner = tuner
+        await self._bring_up(lambda o, cb: FmTuner(o, freq, on_pcm=cb))
 
     async def _start_dab(self, channel: str, sid: str) -> None:
         cur = self.tuner
         if isinstance(cur, DabTuner) and cur.running and cur.channel == channel and cur.has_service(sid):
             await cur.set_service(sid)  # same ensemble: keep the receiver running
             return
+        gain = self.dab_gain(channel)
+        await self._bring_up(lambda o, cb: DabTuner(o, channel, sid, on_pcm=cb, gain_index=gain))
+
+    async def _bring_up(self, make: Any) -> None:
+        """Start a receiver built by ``make(options, on_pcm)``.
+
+        Only the receiver in ``self.tuner`` is heard.  With two equal sticks
+        the new one starts on the free stick while the old one keeps
+        playing, and takes over once it delivers sound -- no gap, no
+        cool-down.  Otherwise (one stick, or the second one without a proper
+        antenna) the old receiver stops first, as before."""
+        box: list[Tuner] = []
+        heard = asyncio.Event()
+
+        async def on_pcm(data: bytes) -> None:
+            heard.set()
+            if box and self.tuner is box[0]:
+                await self.audio.write(data)
+
+        spare = self._spare_stick() if self.equal_sticks and self.tuner and self.tuner.running else None
+        if spare is not None:
+            tuner = make(self._opts(spare), on_pcm)
+            box.append(tuner)
+            self._helper = "switch"
+            try:
+                await tuner.start()
+                await asyncio.wait_for(heard.wait(), SWITCH_WAIT.get(tuner.band, 10.0))
+            except asyncio.CancelledError:
+                await tuner.stop()
+                raise
+            except Exception as err:  # noqa: BLE001 – fall back to the usual way
+                _LOGGER.info("New receiver on stick %d not ready (%s) – switching the usual way", spare, err or "timeout")
+            finally:
+                self._helper = None
+            if tuner.running and heard.is_set():
+                old, self.tuner = self.tuner, tuner
+                self._last_stick = spare
+                _LOGGER.info("Switched without a gap (now on stick %d)", spare)
+                if old:
+                    await old.stop()
+                return
+            await tuner.stop()
+            box.clear()
+        stick = self._last_stick
         await self._stop_tuner()
-        tuner = DabTuner(self.opts, channel, sid, on_pcm=self.audio.write, gain_index=self.dab_gain(channel))
+        tuner = make(self._opts(stick), on_pcm)
+        box.append(tuner)
         await tuner.start()
         self.tuner = tuner
 
+    # ------------------------------------------------------------------ sticks
+    def detect_sticks(self) -> None:
+        """Which sticks to use.  The configured one is the first; a second
+        RTL-SDR stick helps unless switched off in the options."""
+        main = self.opts.rtl_device_index
+        count = len(find_sticks())
+        before = list(self.sticks)
+        if self.opts.second_stick != "aus" and count >= 2 and main < count:
+            self.sticks = [main, next(i for i in range(count) if i != main)]
+        else:
+            self.sticks = [main]
+        if self.sticks != before:
+            if len(self.sticks) > 1:
+                _LOGGER.info("Second RTL-SDR stick found (index %d, mode %s)", self.sticks[1], self.opts.second_stick)
+            else:
+                _LOGGER.info("Using one RTL-SDR stick (index %d)", main)
+            if self._last_stick not in self.sticks:
+                self._last_stick = main
+
+    @property
+    def two_sticks(self) -> bool:
+        return len(self.sticks) > 1
+
+    @property
+    def equal_sticks(self) -> bool:
+        return self.two_sticks and self.opts.second_stick == "gleichwertig"
+
+    def _opts(self, stick: int) -> Options:
+        return dataclasses.replace(self.opts, rtl_device_index=stick)
+
+    def _listen_stick(self) -> int:
+        tuner = self.tuner
+        return tuner.opts.rtl_device_index if tuner else self._last_stick
+
+    def _spare_stick(self) -> int | None:
+        """The stick nobody listens on, if it is free right now."""
+        if not self.two_sticks or self._helper:
+            return None
+        used = self._listen_stick()
+        return next((s for s in self.sticks if s != used), None)
+
     def _busy(self) -> None:
-        if self.scan["running"]:
+        if self.scan["running"] and not self.scan.get("background"):
             raise RuntimeError("Suchlauf läuft – bitte warten oder abbrechen")
 
     # ------------------------------------------------------------------ public actions
@@ -189,7 +291,7 @@ class Radio:
     async def stop(self) -> None:
         self._recover_error = None
         await self._cancel_follow()
-        if self.scan["running"]:
+        if self.scan["running"] and not self.scan.get("background"):
             self.cancel_scan()
             return
         async with self._lock:
@@ -368,13 +470,25 @@ class Radio:
         return out
 
     # ------------------------------------------------------------------ scanning
-    def start_scan(self, band: str) -> None:
+    def start_scan(self, band: str, auto: bool = False) -> None:
         if self.scan["running"]:
-            raise RuntimeError("Suchlauf läuft bereits")
+            if not self.scan.get("auto"):
+                raise RuntimeError("Suchlauf läuft bereits")
+            # a manual scan replaces an automatic one
+            self.cancel_scan()
+            if self._scan_task:
+                self._scan_task.cancel()
         if band not in ("fm", "dab", "all", "dab-optimize"):
             raise ValueError("band muss fm, dab, all oder dab-optimize sein")
         self._scan_cancel.clear()
-        self._scan_task = asyncio.create_task(self._run_scan(band))
+        # on the second stick (decided for good in _run_scan; a search there
+        # gets cancelled for it): station changes stay possible right away
+        background = band != "dab-optimize" and self.two_sticks and self._helper in (None, "follow", "scan")
+        self.scan = {
+            "running": True, "band": band, "progress": 0, "message": "Starte Suchlauf …",
+            "found": 0, "error": None, "background": background, "auto": auto,
+        }  # fmt: skip
+        self._scan_task = asyncio.create_task(self._run_scan(band, auto))
 
     async def _cancel_follow(self) -> None:
         """A user action always wins over a running station-following search
@@ -389,8 +503,20 @@ class Radio:
     def cancel_scan(self) -> None:
         self._scan_cancel.set()
 
-    async def _run_scan(self, band: str) -> None:
+    async def _run_scan(self, band: str, auto: bool = False) -> None:
+        if self._helper == "scan":  # the replaced automatic scan is still winding down
+            for _ in range(100):
+                if self._helper != "scan":
+                    break
+                await asyncio.sleep(0.1)
         await self._cancel_follow()
+        spare = self._spare_stick() if band != "dab-optimize" else None
+        if spare is not None:
+            await self._run_background_scan(band, spare, auto)
+            return
+        if auto:
+            self.scan["running"] = False
+            return
         resume = self.station["id"] if self.station and self.state in ("playing", "following") else None
         self.scan = {"running": True, "band": band, "progress": 0, "message": "Starte Suchlauf …", "found": 0, "error": None}
         async with self._lock:
@@ -407,19 +533,20 @@ class Radio:
                         self.scan["message"] = msg
                         self.changed()
 
+                    opts = self._opts(self._last_stick)
                     if b == "fm":
-                        res = await scan_fm(self.opts, progress, self._scan_cancel)
+                        res = await scan_fm(opts, progress, self._scan_cancel)
                         if not self._scan_cancel.is_set() or res:
                             self.store.merge_fm(res)
                     elif b == "dab-optimize":
-                        res = await optimiere_dab(self.opts, self._dab_channels(), progress, self._scan_cancel)
+                        res = await optimiere_dab(opts, self._dab_channels(), progress, self._scan_cancel)
                         gains = dict(self.store.settings.get("dab_gain") or {})
                         gains.update(res)
                         self._dab_agc.difference_update(res)
                         self.store.settings["dab_gain"] = gains
                         self.store.save()
                     else:
-                        res = await scan_dab(self.opts, progress, self._scan_cancel)
+                        res = await scan_dab(opts, progress, self._scan_cancel)
                         if not self._scan_cancel.is_set() or res:
                             self.store.merge_dab(res)
                     found += len(res)
@@ -447,6 +574,70 @@ class Radio:
         if resume and resume in self.store.stations:
             with contextlib.suppress(Exception):
                 await self.play(resume)
+
+    async def _run_background_scan(self, band: str, stick: int, auto: bool) -> None:
+        """Scan on the second stick while the first one keeps playing.
+
+        An automatic scan gives way to anything else (a manual scan, the
+        station following); what it found until then is dropped, because a
+        merge marks every station NOT found as unavailable."""
+        self._helper, self._scan_auto = "scan", auto
+        what = "Hintergrund-Suchlauf" if auto else "Suchlauf"
+        # this scan's own status: a manual scan replacing this one gets a new dict
+        scan = self.scan
+        scan.update(background=True, auto=auto, message=f"{what} auf dem zweiten Stick …")
+        self.changed()
+        opts = self._opts(stick)
+        bands = ["fm", "dab"] if band == "all" else [band]
+        found = 0
+        try:
+            for i, b in enumerate(bands):
+                def progress(p: float, msg: str, i: int = i) -> None:
+                    scan["progress"] = round((i * 100 + p) / len(bands))
+                    scan["message"] = f"{what}: {msg}"
+                    self.changed()
+
+                res = await (scan_fm if b == "fm" else scan_dab)(opts, progress, self._scan_cancel)
+                cancelled = self._scan_cancel.is_set()
+                if not cancelled or (res and not auto):
+                    (self.store.merge_fm if b == "fm" else self.store.merge_dab)(res)
+                found += len(res)
+                scan["found"] = found
+                if cancelled:
+                    break
+            if self._scan_cancel.is_set():
+                scan["message"] = f"{what} abgebrochen"
+            else:
+                scan["message"] = f"{what} beendet – {found} Sender gefunden"
+                _LOGGER.info("%s finished: %d stations", what, found)
+        except asyncio.CancelledError:
+            scan["message"] = f"{what} abgebrochen"
+            raise
+        except Exception as err:  # noqa: BLE001 – report any failure to the UI
+            _LOGGER.warning("%s failed: %s", what, err)
+            scan["error"] = str(err)
+            scan["message"] = f"{what}: Fehler: {err}"
+        finally:
+            self._helper, self._scan_auto = None, False
+            scan["running"] = False
+            scan["progress"] = 100
+            self.changed()
+        self.lookup_logos()
+
+    def _maybe_background_scan(self) -> None:
+        """Every few minutes while the radio plays: look for what can be
+        received HERE -- the camper moves on, the list goes along."""
+        minutes = self.opts.background_scan_minutes
+        if minutes <= 0 or not self.two_sticks or self.state != "playing":
+            return
+        if self.scan["running"] or self._helper or self._lock.locked():
+            return
+        now = time.monotonic()
+        if now < self._bg_scan_at:
+            return
+        self._bg_scan_at = now + minutes * 60
+        _LOGGER.info("Starting background scan on the second stick")
+        self.start_scan("all", auto=True)
 
     # ------------------------------------------------------------------ logos
     def lookup_logos(self, stations: list[dict[str, Any]] | None = None) -> None:
@@ -529,9 +720,14 @@ class Radio:
             await self._recover()
         if isinstance(tuner, FmTuner) and self.station and self.station.get("transient"):
             self._enrich_transient(tuner)
+        now = time.monotonic()
+        if now >= self._stick_check_at and self._helper is None and not self.scan["running"]:
+            self._stick_check_at = now + STICK_CHECK_INTERVAL
+            self.detect_sticks()
         if not self._lock.locked():
             await self._check_follow()
             await self._check_standby()
+            self._maybe_background_scan()
         self.changed()
 
     async def _recover(self) -> None:
@@ -610,6 +806,16 @@ class Radio:
             _LOGGER.info("DAB %s: fixed gain gives poor reception here, back to AGC", tuner.channel)
             self._follow_task = asyncio.create_task(self._agc_restart(st))
             return
+        if self.two_sticks:
+            if self._helper == "scan" and self._scan_auto:
+                self.cancel_scan()  # following matters more; next tick it is free
+                return
+            spare = self._spare_stick()
+            if spare is not None:
+                self._follow_task = asyncio.create_task(self._follow_background(tuner, st, spare))
+                return
+            if self._helper:
+                return  # a manual scan uses the second stick: wait for it
         # separate task, so user actions can interrupt the search right away
         self._follow_task = asyncio.create_task(self._follow(tuner, st))
 
@@ -633,27 +839,14 @@ class Radio:
             fm_af = sorted(tuner.rds.af) if isinstance(tuner, FmTuner) else []
             pi = (tuner.rds.pi if isinstance(tuner, FmTuner) else None) or st.get("pi")
             try:
+                opts = self._opts(self._listen_stick())
                 await self._stop_tuner()
-                best = await self._find_alternative(st, original, cur_q, fm_af, pi)
+                best = await self._find_alternative(st, original, cur_q, fm_af, pi, opts)
             except Exception as err:  # noqa: BLE001
                 _LOGGER.warning("Station following failed: %s", err)
                 best = None
             if best:
-                station, band, where, q = best
-                self.station = station
-                if band == "fm":
-                    await self._start_fm(where)
-                    self.store.remember_fm_freq(station["id"], where, q)
-                    loc = f"{where:.1f} MHz".replace(".", ",")
-                else:
-                    await self._start_dab(where, station["sid"])
-                    self.store.remember_dab_channel(station["id"], where, None, q)
-                    loc = f"DAB+ Kanal {where}"
-                msg = f"Umgeschaltet: {display_name(station)} auf {loc}"
-                _LOGGER.info(msg)
-                self.follow.update(message=msg, last_switch=time.time())
-                self._follow_block_until = time.monotonic() + 30
-                self._follow_fails = 0
+                await self._switch_to(best)
             else:
                 band, freq, channel = original
                 if band == "fm":
@@ -669,6 +862,89 @@ class Radio:
             self._bad_since = None
         self.changed()
 
+    async def _switch_to(self, best: tuple[dict[str, Any], str, Any, float]) -> None:
+        station, band, where, q = best
+        self.station = station
+        if band == "fm":
+            await self._start_fm(where)
+            self.store.remember_fm_freq(station["id"], where, q)
+            loc = f"{where:.1f} MHz".replace(".", ",")
+        else:
+            await self._start_dab(where, station["sid"])
+            self.store.remember_dab_channel(station["id"], where, None, q)
+            loc = f"DAB+ Kanal {where}"
+        msg = f"Umgeschaltet: {display_name(station)} auf {loc}"
+        _LOGGER.info(msg)
+        self.follow.update(message=msg, last_switch=time.time())
+        self._follow_block_until = time.monotonic() + 30
+        self._follow_fails = 0
+
+    async def _spare_receives_worse(self, opts: Options, tuner: Tuner, st: dict[str, Any], cur_q: float) -> bool:
+        """Reference measurement: the current station on the second stick.
+        Clearly worse than on the first one = no (proper) antenna there, and
+        a search with it would find nothing."""
+        try:
+            if isinstance(tuner, FmTuner):
+                ref = (await probe_fm(opts, tuner.freq, max_time=3.5, min_time=1.5))["quality"]
+            else:
+                ref = (await probe_dab(opts, tuner.channel, max_time=8, want_sid=st.get("sid")))["quality"]
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.info("Second stick: reference measurement failed (%s)", err)
+            self.spare_hint = f"Zweiter Stick: Gegenprobe fehlgeschlagen ({err})"
+            return True
+        worse = ref < cur_q - SPARE_WORSE_BY
+        self.spare_hint = (
+            f"Zweiter Stick empfängt deutlich schlechter ({ref:.0f} % statt {cur_q:.0f} %) – Antenne prüfen"
+            if worse
+            else None
+        )
+        if worse:
+            _LOGGER.warning("Second stick receives clearly worse (%.0f%% vs %.0f%%) – antenna?", ref, cur_q)
+        return worse
+
+    async def _follow_background(self, tuner: Tuner, st: dict[str, Any], spare: int) -> None:
+        """Station following on the second stick: the first one keeps playing
+        while the alternatives are measured -- no silence during the search."""
+        cur_q = tuner.quality
+        name = display_name(st)
+        _LOGGER.info("Reception of %s poor (%.0f%%) – searching on the second stick", name, cur_q)
+        self.follow.update(active=True, message=f"Empfang schwach – suche {name} im Hintergrund …")
+        self.changed()
+        original = (tuner.band, getattr(tuner, "freq", None), getattr(tuner, "channel", None))
+        fm_af = sorted(tuner.rds.af) if isinstance(tuner, FmTuner) else []
+        pi = (tuner.rds.pi if isinstance(tuner, FmTuner) else None) or st.get("pi")
+        opts = self._opts(spare)
+        classic = False
+        best = None
+        self._helper = "follow"
+        try:
+            if not self.equal_sticks and await self._spare_receives_worse(opts, tuner, st, cur_q):
+                classic = True
+            else:
+                best = await self._find_alternative(st, original, cur_q, fm_af, pi, opts)
+        except asyncio.CancelledError:
+            self.follow["active"] = False
+            raise
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.warning("Station following failed: %s", err)
+        finally:
+            self._helper = None
+        if classic:
+            self.follow["active"] = False
+            await self._follow(tuner, st)
+            return
+        if best and self.station is st and self.tuner is tuner and self.state == "playing":
+            async with self._lock:
+                await self._switch_to(best)
+        elif not best:
+            self.follow["message"] = "Kein besserer Empfang gefunden"
+            # nothing was interrupted -- try again sooner than the classic way
+            self._follow_block_until = time.monotonic() + min(60 * 2**self._follow_fails, 600)
+            self._follow_fails += 1
+        self.follow["active"] = False
+        self._bad_since = None
+        self.changed()
+
     async def _find_alternative(
         self,
         st: dict[str, Any],
@@ -676,7 +952,9 @@ class Radio:
         cur_q: float,
         fm_af: list[float],
         pi: str | None,
+        opts: Options | None = None,
     ) -> tuple[dict[str, Any], str, Any, float] | None:
+        opts = opts or self.opts
         need = max(self.opts.follow_threshold, cur_q + 10)
         band = original[0]
         code = _hex(pi if band == "fm" else st.get("sid"))
@@ -686,7 +964,7 @@ class Radio:
             for f in freqs[:10]:
                 self.follow["message"] = f"Prüfe {display_name(station)} auf {f:.1f} MHz …".replace(".", ",", 1)
                 self.changed()
-                res = await probe_fm(self.opts, f, max_time=3.5, min_time=1.5)
+                res = await probe_fm(opts, f, max_time=3.5, min_time=1.5)
                 if pi_code and _hex(res["pi"]) != pi_code:
                     continue
                 if res["quality"] >= need and (best is None or res["quality"] > best[3]):
@@ -697,7 +975,7 @@ class Radio:
             for ch in channels[:6]:
                 self.follow["message"] = f"Prüfe {display_name(station)} auf DAB+ {ch} …"
                 self.changed()
-                res = await probe_dab(self.opts, ch, max_time=8, want_sid=station["sid"])
+                res = await probe_dab(opts, ch, max_time=8, want_sid=station["sid"])
                 if any(norm_sid(s["sid"]) == norm_sid(station["sid"]) for s in res["services"]):
                     if res["quality"] >= need:
                         return (station, "dab", ch, res["quality"])
@@ -729,7 +1007,7 @@ class Radio:
             if self.opts.follow_full_search and code and cur_q < 20:
                 self.follow["message"] = f"Durchsuche FM-Band nach {display_name(st)} …"
                 self.changed()
-                spectrum = await rtl_power_sweep(self.opts, FM_START - 0.2, FM_STOP + 0.2, 10, seconds=1)
+                spectrum = await rtl_power_sweep(opts, FM_START - 0.2, FM_STOP + 0.2, 10, seconds=1)
                 cands = sorted(fm_candidates(spectrum, self.opts.fm_step_khz, self.opts.fm_scan_threshold_db), key=lambda c: -c[1])
                 rest = [f for f, _ in cands if f not in freqs and abs(f - cur) > 0.01]
                 if res := await try_fm(st, rest[:12], code):
@@ -747,7 +1025,7 @@ class Radio:
             if self.opts.follow_full_search and cur_q < 20:
                 self.follow["message"] = f"Durchsuche DAB-Band nach {display_name(st)} …"
                 self.changed()
-                chans = [c for c in await dab_candidates(self.opts) if c != cur and c not in channels]
+                chans = [c for c in await dab_candidates(opts) if c != cur and c not in channels]
                 if res := await try_dab(st, chans):
                     return res
         return None
@@ -845,6 +1123,10 @@ class Radio:
             "standby_minutes": self.opts.standby_minutes,
             "follow": dict(self.follow),
             "scan": dict(self.scan),
+            "sticks": len(self.sticks),
+            "second_stick": self.opts.second_stick if self.two_sticks else None,
+            "second_stick_busy": self._helper,
+            "second_stick_hint": self.spare_hint,
             "active_favorite": self.active_favorite(),
             "favorites": [self.station_info(self.store.stations[f]) for f in self.store.favorites if f in self.store.stations],
             "station_count": len(self.store.stations),

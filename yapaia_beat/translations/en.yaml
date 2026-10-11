@@ -46,6 +46,21 @@ configuration:
     name: MP3 stream bitrate (kbit/s)
   rtl_device_index:
     name: RTL-SDR device index
+    description: The stick used for listening. Only relevant with several sticks.
+  second_stick:
+    name: Second stick
+    description: >-
+      If a second RTL-SDR stick is plugged in: "suche" – it scans and follows stations
+      in the background while the radio keeps playing on the first one (also fine if it
+      receives worse; if clearly worse, Beat searches as with one stick).
+      "gleichwertig" – both sticks receive equally well (own antenna or splitter): a new
+      station starts on the free stick first and takes over without a gap. "aus" – do not
+      use the second stick.
+  background_scan_minutes:
+    name: Background scan (minutes)
+    description: >-
+      With a second stick, Beat rescans FM and DAB+ every so many minutes while
+      playing, so the station list follows you on the road. 0 = off.
   resume_last_station:
     name: Resume last station
   standby_minutes:

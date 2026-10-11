@@ -22,6 +22,16 @@ class Options:
     default_volume: int = 60
     mp3_bitrate: int = 128
     rtl_device_index: int = 0
+    # Beat 1.13.0: a second RTL-SDR stick, if plugged in.
+    #   aus          – ignore it
+    #   suche        – it scans and searches in the background; playback
+    #                  always stays on the first stick (safe without antenna
+    #                  on the second one)
+    #   gleichwertig – both sticks receive equally well (own antenna or
+    #                  splitter): a new station starts on the free stick and
+    #                  takes over without a gap
+    second_stick: str = "suche"
+    background_scan_minutes: int = 30  # 0 = no automatic background scan
     rtl_gain: str = "auto"
     ppm_correction: int = 0
     fm_step_khz: int = 100

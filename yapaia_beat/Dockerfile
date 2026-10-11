@@ -25,6 +25,12 @@ RUN git clone --depth 1 --branch "${WELLE_VERSION}" https://github.com/AlbrechtL
     && sed -i 's/NewMaxValue <= 255/NewMaxValue <= 200/' /src/welle/src/input/rtl_sdr.cpp \
     && grep -q 'milliseconds(250)' /src/welle/src/input/rtl_sdr.cpp \
     && grep -q 'NewMaxValue <= 200' /src/welle/src/input/rtl_sdr.cpp \
+    # Zweiter Stick (Beat 1.13.0): welle-cli nimmt sonst den ersten Stick, den
+    # es öffnen kann. Mit YAPAIA_RTL_DEVICE öffnet es genau diesen einen --
+    # sonst griffe ein Suchlauf nach dem Stick, der gerade spielt.
+    && sed -i 's|for(uint32_t i=0; i<deviceCount; i++) {|for(uint32_t i=0; i<deviceCount; i++) { if (std::getenv("YAPAIA_RTL_DEVICE") \&\& i != (uint32_t)std::atoi(std::getenv("YAPAIA_RTL_DEVICE"))) { ret = -1; continue; }|' /src/welle/src/input/rtl_sdr.cpp \
+    && sed -i '1i #include <cstdlib>' /src/welle/src/input/rtl_sdr.cpp \
+    && grep -q 'YAPAIA_RTL_DEVICE' /src/welle/src/input/rtl_sdr.cpp \
     && cmake -S /src/welle -B /src/welle/build \
         -DCMAKE_BUILD_TYPE=Release \
         -DBUILD_WELLE_IO=OFF \
